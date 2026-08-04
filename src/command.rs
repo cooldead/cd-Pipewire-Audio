@@ -4,6 +4,7 @@
 //! backend thread applies it. Volume deltas are on the cubic/perceptual scale
 //! (see [`crate::pw`]). Names are `node.name` / `application.name` strings.
 
+#[derive(Debug)]
 pub enum Command {
 	/// Change the default sink volume by this delta on the cubic scale.
 	AdjustVolume(f32),

@@ -573,6 +573,8 @@ fn on_global_remove(inner: &Rc<RefCell<Inner>>, id: u32) {
 }
 
 fn on_command(inner: &Rc<RefCell<Inner>>, cmd: Command) {
+	log::info!("command {cmd:?}");
+
 	// Commands that don't target the default sink are handled first.
 	match &cmd {
 		Command::SetDefaultSink(name) => {
