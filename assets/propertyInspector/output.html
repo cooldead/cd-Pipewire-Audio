@@ -46,13 +46,18 @@
 				titleInput.addEventListener("input", () => { customTitle = titleInput.value; save(); });
 				useCurrent.addEventListener("change", () => { syncTitle(); save(); });
 
+				const streamInput = document.getElementById("stream");
+				streamInput.value = (typeof settings.stream === "string") ? settings.stream : "";
+
 				const save = () => {
 					const wi = document.querySelector('input[name="when_inactive"]:checked');
+					const stream = streamInput.value.trim();
 					websocket.send(JSON.stringify({
 						event: "setSettings",
 						context: context,
 						payload: {
 							sinks: order,
+							stream: stream === "" ? null : stream,
 							when_inactive: wi ? wi.value : "cycle",
 							title: useCurrent.checked ? null : customTitle,
 							icons: icons,
@@ -60,6 +65,7 @@
 						},
 					}));
 				};
+				streamInput.addEventListener("input", save);
 				syncTitle();
 
 				const wiValue = settings.when_inactive ?? "cycle";
@@ -179,6 +185,18 @@
 					if (name && !order.includes(name)) { order.push(name); save(); }
 					render();
 				});
+				const manual = document.getElementById("manual");
+				const addManual = () => {
+					const name = manual.value.trim();
+					if (name === "" || order.includes(name)) return;
+					order.push(name);
+					manual.value = "";
+					save();
+					render();
+				};
+				document.getElementById("addManual").addEventListener("click", addManual);
+				manual.addEventListener("keydown", (e) => { if (e.key === "Enter") addManual(); });
+
 				render();
 				renderInactive();
 
@@ -213,6 +231,18 @@
 				<select id="add" class="sdpi-item-value select">
 					<option value="">— add a device —</option>
 				</select>
+			</div>
+			<div class="sdpi-item">
+				<div class="sdpi-item-label">Route a stream</div>
+				<input id="stream" type="text" class="sdpi-item-value" placeholder="node.name, e.g. output.a50" />
+			</div>
+			<div class="action-desc">Leave empty to switch the system default output. Set a stream's node.name to switch where that stream sends instead: the apps feeding it are never moved, so nothing is paused. Targets may then be entered by name below even when they are hidden from applications.</div>
+			<div class="sdpi-item">
+				<div class="sdpi-item-label">Add by name</div>
+				<div class="sdpi-item-value label-row">
+					<input id="manual" type="text" placeholder="node.name" />
+					<button id="addManual">Add</button>
+				</div>
 			</div>
 			<div type="radio" class="sdpi-item">
 				<div class="sdpi-item-label">When another device is active</div>

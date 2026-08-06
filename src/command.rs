@@ -14,6 +14,10 @@ pub enum Command {
 	/// the *configured* default (`default.configured.audio.sink`) so the choice is
 	/// sticky rather than transient.
 	SetDefaultSink(String),
+	/// Point a stream at a sink, both by `node.name`, by setting `target.object`
+	/// on the stream's node in the "default" metadata. Used to switch where a
+	/// virtual sink sends its output without disturbing the apps feeding it.
+	SetStreamTarget { stream: String, target: String },
 	/// Change the volume of every stream of an app by this cubic delta.
 	AdjustAppVolume(String, f32),
 	/// Set mute on every stream of an app. `None` toggles.

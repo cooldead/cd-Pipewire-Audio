@@ -35,6 +35,10 @@ pub enum WhenInactive {
 pub struct OutputSettings {
 	/// `node.name`s of the sinks to cycle through.
 	pub sinks: Vec<String>,
+	/// When set, the key cycles the `target.object` of this stream (by `node.name`)
+	/// instead of the system default, so the apps feeding a virtual sink are never
+	/// moved and never corked. Its targets may be sinks hidden from clients.
+	pub stream: Option<String>,
 	/// Behaviour when the current default isn't one of `sinks`.
 	pub when_inactive: WhenInactive,
 	/// Custom key title. `None` = show the current default output's name.
@@ -68,7 +72,13 @@ impl Action for OutputAction {
 		settings: &Self::Settings,
 	) -> OpenActionResult<()> {
 		if let Some(next) = self.next(settings) {
-			self.pw.send(Command::SetDefaultSink(next));
+			match &settings.stream {
+				Some(stream) => self.pw.send(Command::SetStreamTarget {
+					stream: stream.clone(),
+					target: next,
+				}),
+				None => self.pw.send(Command::SetDefaultSink(next)),
+			}
 		}
 		// Reflect the resulting (or unchanged, when disabled) state.
 		self.render(instance, settings).await
@@ -134,6 +144,37 @@ impl Action for OutputAction {
 	}
 }
 
+/// What the key reflects and cycles from: the stream's current target when the
+/// key routes a stream, else the system default sink. While a stream still sits
+/// on the target it was created with — which no metadata records — this falls
+/// back to the first configured entry, and self-corrects on the first press.
+fn current(settings: &OutputSettings, pw: &PwHandle) -> Option<String> {
+	match &settings.stream {
+		Some(stream) => pw
+			.stream_target(stream)
+			.or_else(|| chosen(settings).first().map(|s| (*s).to_owned())),
+		None => pw.default_sink_name(),
+	}
+}
+
+/// Whether the key applies right now, which is what `when_inactive` acts on.
+///
+/// Routing a stream, that is a different question from what the key cycles: the
+/// targets are always the stream's own, so the key would never fall inactive if
+/// they decided it. What matters is whether the sink feeding that stream is the
+/// current system output — for a headset loopback, whether the headset is worn.
+fn is_active(settings: &OutputSettings, pw: &PwHandle) -> bool {
+	match &settings.stream {
+		Some(stream) => match (pw.stream_sink(stream), pw.default_sink_name()) {
+			(Some(sink), Some(default)) => sink == default,
+			_ => false,
+		},
+		None => current(settings, pw)
+			.as_deref()
+			.is_some_and(|c| chosen(settings).contains(&c)),
+	}
+}
+
 /// The configured sinks, dropping empty entries.
 fn chosen(settings: &OutputSettings) -> Vec<&str> {
 	settings
@@ -157,8 +198,7 @@ pub struct Surface {
 /// Resolve the key surface for a set of output settings against the current
 /// default. Shared by the action's own redraws and the background [`Refresher`].
 pub fn surface(settings: &OutputSettings, pw: &PwHandle) -> Surface {
-	let list = chosen(settings);
-	let current = pw.default_sink_name();
+	let current = current(settings, pw);
 	let title = match &settings.title {
 		Some(t) => t.clone(),
 		None => current
@@ -166,8 +206,7 @@ pub fn surface(settings: &OutputSettings, pw: &PwHandle) -> Surface {
 			.map(|c| describe(pw, c))
 			.unwrap_or_else(|| "Output".to_owned()),
 	};
-	let in_list = current.as_deref().is_some_and(|c| list.contains(&c));
-	let active = in_list || settings.when_inactive == WhenInactive::Cycle;
+	let active = is_active(settings, pw) || settings.when_inactive == WhenInactive::Cycle;
 	let image = if active {
 		current
 			.as_deref()
@@ -201,7 +240,10 @@ impl OutputAction {
 		if list.is_empty() {
 			return None;
 		}
-		let current = self.pw.default_sink_name();
+		if settings.when_inactive == WhenInactive::Disable && !is_active(settings, &self.pw) {
+			return None;
+		}
+		let current = current(settings, &self.pw);
 		match current
 			.as_deref()
 			.and_then(|c| list.iter().position(|&s| s == c))

@@ -1,6 +1,7 @@
 //! The cheap, cloneable handle every action uses to talk to the backend, plus
 //! the entry point that starts the PipeWire thread.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -21,6 +22,8 @@ pub struct PwHandle {
 	apps: Arc<Mutex<Vec<AppDesc>>>,
 	default_sink_name: Arc<Mutex<Option<String>>>,
 	default_source_name: Arc<Mutex<Option<String>>>,
+	stream_targets: Arc<Mutex<HashMap<String, String>>>,
+	stream_sinks: Arc<Mutex<HashMap<String, String>>>,
 	/// Bumped by the PipeWire thread whenever any published state changes, so the
 	/// UI can re-render on out-of-band volume/mute changes (wpctl, media keys…).
 	notify: Arc<tokio::sync::watch::Sender<u64>>,
@@ -78,6 +81,20 @@ impl PwHandle {
 		self.default_source_name.lock().unwrap().clone()
 	}
 
+	/// `node.name` of the sink a stream currently targets, if `target.object` has
+	/// been set for it. `None` while the stream still sits on the target given at
+	/// creation, which no metadata records.
+	pub fn stream_target(&self, stream: &str) -> Option<String> {
+		self.stream_targets.lock().unwrap().get(stream).cloned()
+	}
+
+	/// `node.name` of the sink a stream belongs to — the one applications feed
+	/// and that can be the system default. Both halves of a loopback share a
+	/// `node.link-group`, which is how the pair is resolved.
+	pub fn stream_sink(&self, stream: &str) -> Option<String> {
+		self.stream_sinks.lock().unwrap().get(stream).cloned()
+	}
+
 	/// Live aggregate (volume_cubic, mute) of an app's streams by
 	/// `application.name`, if it is currently producing audio.
 	pub fn app_state(&self, name: &str) -> Option<(f32, bool)> {
@@ -115,6 +132,8 @@ pub fn start() -> Result<PwHandle> {
 	let apps = Arc::new(Mutex::new(Vec::new()));
 	let default_sink_name = Arc::new(Mutex::new(None));
 	let default_source_name = Arc::new(Mutex::new(None));
+	let stream_targets = Arc::new(Mutex::new(HashMap::new()));
+	let stream_sinks = Arc::new(Mutex::new(HashMap::new()));
 	// Drop the initial receiver; consumers get their own via `PwHandle::subscribe`.
 	let (notify_tx, _) = tokio::sync::watch::channel(0u64);
 	let notify = Arc::new(notify_tx);
@@ -126,6 +145,8 @@ pub fn start() -> Result<PwHandle> {
 		apps: apps.clone(),
 		default_sink_name: default_sink_name.clone(),
 		default_source_name: default_source_name.clone(),
+		stream_targets: stream_targets.clone(),
+		stream_sinks: stream_sinks.clone(),
 		notify: notify.clone(),
 	};
 
@@ -148,6 +169,8 @@ pub fn start() -> Result<PwHandle> {
 		apps,
 		default_sink_name,
 		default_source_name,
+		stream_targets,
+		stream_sinks,
 		notify,
 	})
 }

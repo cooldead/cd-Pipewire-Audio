@@ -25,6 +25,9 @@ struct NodeRef {
 	is_stream: bool,
 	/// For an application output stream: its `application.name`.
 	app_name: Option<String>,
+	/// `node.link-group`, shared by the two halves of a loopback: it is what ties
+	/// a routable stream to the sink applications actually feed.
+	link_group: Option<String>,
 	/// For a hardware sink: the owning `Device` object id and the route's
 	/// `card.profile.device` index, used to set the hardware (route) volume.
 	device_id: Option<u32>,
@@ -56,6 +59,15 @@ struct Inner {
 	/// `node.name` of the current default sink / source (from "default" metadata).
 	default_sink_name: Option<String>,
 	default_source_name: Option<String>,
+	/// Output streams that carry no `application.name` — loopback and combine
+	/// streams — kept as `node.name` -> node id so they can be re-targeted.
+	routable_streams: HashMap<String, u32>,
+	/// `node.name` of a routable stream -> its `node.link-group`, used to find the
+	/// sink it belongs to.
+	stream_groups: HashMap<String, String>,
+	/// Node id -> `node.name` of the sink it targets, from `target.object` in the
+	/// "default" metadata.
+	stream_targets: HashMap<u32, String>,
 	/// The "default" metadata proxy + its listener, kept alive while connected.
 	_metadata: Option<(
 		pipewire::metadata::Metadata,
@@ -71,9 +83,40 @@ impl Inner {
 			devices: HashMap::new(),
 			default_sink_name: None,
 			default_source_name: None,
+			routable_streams: HashMap::new(),
+			stream_groups: HashMap::new(),
+			stream_targets: HashMap::new(),
 			_metadata: None,
 			chans,
 		}
+	}
+
+	/// Publish, for every routable stream, the sink it currently targets and the
+	/// sink applications feed it through — its loopback sibling, found by the
+	/// `node.link-group` the two halves share.
+	fn publish_streams(&self) {
+		let targets = self
+			.routable_streams
+			.iter()
+			.filter_map(|(name, id)| {
+				self.stream_targets
+					.get(id)
+					.map(|target| (name.clone(), target.clone()))
+			})
+			.collect();
+		*self.chans.stream_targets.lock().unwrap() = targets;
+
+		let siblings = self
+			.stream_groups
+			.iter()
+			.filter_map(|(name, group)| {
+				self.nodes
+					.values()
+					.find(|n| n.is_sink && n.link_group.as_deref() == Some(group))
+					.map(|n| (name.clone(), n.name.clone()))
+			})
+			.collect();
+		*self.chans.stream_sinks.lock().unwrap() = siblings;
 	}
 
 	/// Build the (sorted, live volume/mute) descriptor list for sinks or sources.
@@ -107,6 +150,9 @@ impl Inner {
 
 	fn refresh_sinks(&self) {
 		*self.chans.sinks.lock().unwrap() = self.node_descs(true);
+		// A loopback's sink half often appears after its stream half, so the pairing
+		// cannot be resolved when the stream shows up: redo it whenever sinks change.
+		self.publish_streams();
 		self.bump();
 	}
 
@@ -220,6 +266,10 @@ impl Inner {
 		self._metadata = None;
 		self.default_sink_name = None;
 		self.default_source_name = None;
+		self.routable_streams.clear();
+		self.stream_groups.clear();
+		self.stream_targets.clear();
+		self.publish_streams();
 		self.refresh_sinks();
 		self.refresh_sources();
 		self.refresh_apps();
@@ -273,8 +323,9 @@ pub(super) fn run_loop(rx: pipewire::channel::Receiver<Command>, chans: Channels
 				log::warn!("core error (id {id}, res {res}): {message}");
 				// `-ENOENT` on the core means we touched an object that had already
 				// gone: a node removed mid-bind, or one the session manager hid from
-				// us. The connection itself is healthy, and reconnecting would only
-				// replay the same race forever.
+				// us (WirePlumber's `hide-parent` revokes permissions on nodes we may
+				// have seen a moment earlier). The connection itself is healthy, and
+				// reconnecting would only replay the same race forever.
 				const ENOENT: i32 = -2;
 				if id == pipewire::core::PW_ID_CORE && res != ENOENT {
 					ml.quit();
@@ -322,6 +373,20 @@ fn on_global(
 			// excludes the internal combine/loopback streams (which have none).
 			let app_name: Option<String> = props.get("application.name").map(str::to_owned);
 			let is_stream = media_class == "Stream/Output/Audio" && app_name.is_some();
+			// Those same internal streams are what a virtual sink sends through, so
+			// remember their ids: re-targeting one is how a loopback's destination is
+			// switched. They are not bound as nodes — only the id/name pair is kept.
+			if media_class == "Stream/Output/Audio"
+				&& app_name.is_none()
+				&& let Some(name) = props.get("node.name")
+			{
+				let mut b = inner.borrow_mut();
+				b.routable_streams.insert(name.to_owned(), global.id);
+				if let Some(group) = props.get("node.link-group") {
+					b.stream_groups.insert(name.to_owned(), group.to_owned());
+				}
+				b.publish_streams();
+			}
 			if !is_sink && !is_source && !is_stream {
 				return;
 			}
@@ -413,6 +478,7 @@ fn on_global(
 					is_source,
 					is_stream,
 					app_name: if is_stream { app_name } else { None },
+					link_group: props.get("node.link-group").map(str::to_owned),
 					device_id,
 					route_device,
 					volume_cubic: 0.0,
@@ -453,7 +519,26 @@ fn on_global(
 			let inner_m = inner.clone();
 			let listener = metadata
 				.add_listener_local()
-				.property(move |_subject, key, _type, value| {
+				.property(move |subject, key, _type, value| {
+					// `target.object` is keyed by the stream's node id and its value is a
+					// bare `node.name` (the {"name":...} form is rejected by WirePlumber),
+					// so it is read before the JSON-shaped default.* keys below.
+					if key == Some("target.object") {
+						let mut b = inner_m.borrow_mut();
+						match value {
+							Some(v) => {
+								b.stream_targets
+									.insert(subject, v.trim_matches('"').to_owned());
+							}
+							None => {
+								b.stream_targets.remove(&subject);
+							}
+						}
+						b.publish_streams();
+						drop(b);
+						inner_m.borrow().publish();
+						return 0;
+					}
 					// Value is JSON, e.g. {"name":"alsa_output...game"}.
 					let parsed = value
 						.and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
@@ -570,6 +655,18 @@ fn on_global_remove(inner: &Rc<RefCell<Inner>>, id: u32) {
 		let mut b = inner.borrow_mut();
 		b.nodes.remove(&id);
 		b.devices.remove(&id);
+		let gone: Vec<String> = b
+			.routable_streams
+			.iter()
+			.filter(|(_, v)| **v == id)
+			.map(|(k, _)| k.clone())
+			.collect();
+		for name in gone {
+			b.routable_streams.remove(&name);
+			b.stream_groups.remove(&name);
+		}
+		b.stream_targets.remove(&id);
+		b.publish_streams();
 	}
 	let b = inner.borrow();
 	b.refresh_sinks();
@@ -601,6 +698,23 @@ fn on_command(inner: &Rc<RefCell<Inner>>, cmd: Command) {
 					log::info!("set configured default sink -> {name}");
 				}
 				None => log::warn!("No 'default' metadata available; cannot switch sink"),
+			}
+			return;
+		}
+		Command::SetStreamTarget { stream, target } => {
+			let b = inner.borrow();
+			let Some(id) = b.routable_streams.get(stream.as_str()).copied() else {
+				log::warn!("No routable stream named '{stream}'; cannot re-target");
+				return;
+			};
+			match b._metadata.as_ref() {
+				Some((metadata, _)) => {
+					// A bare `node.name`, untyped: the {"name":...} JSON form used for
+					// the default.* keys is rejected here and silently drops the target.
+					metadata.set_property(id, "target.object", None, Some(target));
+					log::info!("stream '{stream}' (node {id}) -> target '{target}'");
+				}
+				None => log::warn!("No 'default' metadata available; cannot re-target"),
 			}
 			return;
 		}

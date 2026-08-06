@@ -23,6 +23,7 @@ mod handle;
 mod pod;
 mod types;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub use handle::{PwHandle, start};
@@ -39,5 +40,10 @@ struct Channels {
 	/// `node.name` of the current default sink / source, for the cycling pickers.
 	default_sink_name: Arc<Mutex<Option<String>>>,
 	default_source_name: Arc<Mutex<Option<String>>>,
+	/// `node.name` of a routable stream -> `node.name` of the sink it currently
+	/// targets, for keys that switch a virtual sink's destination.
+	stream_targets: Arc<Mutex<HashMap<String, String>>>,
+	/// `node.name` of a routable stream -> the sink applications feed it through.
+	stream_sinks: Arc<Mutex<HashMap<String, String>>>,
 	notify: Arc<tokio::sync::watch::Sender<u64>>,
 }
