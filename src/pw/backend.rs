@@ -271,7 +271,12 @@ pub(super) fn run_loop(rx: pipewire::channel::Receiver<Command>, chans: Channels
 			.add_listener_local()
 			.error(move |id, _seq, res, message| {
 				log::warn!("core error (id {id}, res {res}): {message}");
-				if id == pipewire::core::PW_ID_CORE {
+				// `-ENOENT` on the core means we touched an object that had already
+				// gone: a node removed mid-bind, or one the session manager hid from
+				// us. The connection itself is healthy, and reconnecting would only
+				// replay the same race forever.
+				const ENOENT: i32 = -2;
+				if id == pipewire::core::PW_ID_CORE && res != ENOENT {
 					ml.quit();
 				}
 			})
