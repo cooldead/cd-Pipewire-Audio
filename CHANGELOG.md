@@ -6,13 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Added
+
+- **Output Device — route a stream**: set a stream's `node.name` in the property
+  inspector and the key switches where that stream sends instead of the system
+  default output; the apps feeding it are never moved, so nothing is paused.
+  Targets can then be added by name, even when hidden from applications.
+- Every command the backend receives is logged, with its parameters, so an
+  unexpected mute or volume change can be traced back to the key or dial.
+
 ### Changed
 
 - CI actions bumped off the deprecated Node 20 runtime.
+- `base64` upgraded to 0.23.
 
 ### Fixed
 
 - Reconnect automatically after a PipeWire daemon restart, instead of going inert.
+- An `ENOENT` reported on the core (binding a node whose permission was just
+  revoked) is no longer taken for a lost connection, which looped reconnecting.
 
 ## [0.2.0]
 
@@ -91,7 +105,8 @@ dedicated Mute action), and **no Node.js or Wine** at runtime.
 - GPL-3.0-or-later license, CI (fmt + clippy + build) and a release workflow that
   bundles the `.sdPlugin` for x86_64 and aarch64 Linux.
 
-[Unreleased]: https://github.com/sjourdois/opendeck-pipewire/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sjourdois/opendeck-pipewire/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/sjourdois/opendeck-pipewire/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sjourdois/opendeck-pipewire/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/sjourdois/opendeck-pipewire/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sjourdois/opendeck-pipewire/releases/tag/v0.1.0
