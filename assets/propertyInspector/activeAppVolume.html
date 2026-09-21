@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"/><script>
+let update=()=>{};let syncStep=()=>{};
+function connectElgatoStreamDeckSocket(inPort,inPropertyInspectorUUID,inRegisterEvent,inInfo,inActionInfo){
+ const websocket=new WebSocket("ws://localhost:"+inPort); inActionInfo=JSON.parse(inActionInfo); const context=inActionInfo.context; const settings=inActionInfo.payload.settings;
+ websocket.onopen=()=>websocket.send(JSON.stringify({event:inRegisterEvent,uuid:inPropertyInspectorUUID}));
+ const step=document.getElementById("step"),stepValue=document.getElementById("stepValue"),mode=document.getElementById("mode"),unmute=document.getElementById("unmute"),mute=document.getElementById("mute"),direction=document.getElementById("direction"),stepRow=document.getElementById("stepRow");
+ step.value=settings.step??5;stepValue.innerText=step.value+"%";mode.value=settings.mode??"up";unmute.value=settings.unmute_color??"#3db36b";mute.value=settings.mute_color??"#ff3b30";
+ const isKeypad=inActionInfo.payload.controller!="Encoder";if(!isKeypad)direction.style.display="none";syncStep=()=>stepRow.style.display=(isKeypad&&mode.value=="mute")?"none":"";syncStep();step.addEventListener("input",()=>stepValue.innerText=step.value+"%");
+ update=()=>websocket.send(JSON.stringify({event:"setSettings",context,payload:{step:parseInt(step.value,10),mode:mode.value,unmute_color:unmute.value,mute_color:mute.value}}));
+}
+</script><link rel="stylesheet" href="sdpi.css"/></head>
+<body><div class="sdpi-wrapper">
+<div class="action-title">Active Application Volume</div>
+<div class="action-desc">Controls the audio of the application owning the currently focused KDE/Wayland window. Rotate the encoder for volume; press or touch to mute.</div>
+<div class="sdpi-item" id="direction"><div class="sdpi-item-label">On press</div><select id="mode" class="sdpi-item-value select" onchange="update();syncStep()"><option value="up">Volume up</option><option value="down">Volume down</option><option value="mute">Toggle mute</option></select></div>
+<div class="sdpi-item" id="stepRow"><div class="sdpi-item-label">Step (<span id="stepValue">5%</span>)</div><input id="step" class="sdpi-item-value" type="range" min="1" max="20" value="5" onchange="update()"/></div>
+<div class="sdpi-item"><div class="sdpi-item-label">Bar color</div><input id="unmute" class="sdpi-item-value" type="color" value="#3db36b" onchange="update()"/></div>
+<div class="sdpi-item"><div class="sdpi-item-label">Muted color</div><input id="mute" class="sdpi-item-value" type="color" value="#ff3b30" onchange="update()"/></div>
+</div></body></html>

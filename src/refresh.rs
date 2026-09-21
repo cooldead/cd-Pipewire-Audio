@@ -1,0 +1,250 @@
+//! Live key re-rendering for out-of-band PipeWire changes.
+//!
+//! Actions normally redraw only on user interaction or `willAppear`. When the
+//! volume/mute of a sink or source changes by another means (wpctl, pavucontrol,
+//! media keys, another app…), the PipeWire thread bumps a watch channel (see
+//! [`crate::pw::PwHandle::subscribe`]); a background task then calls
+//! [`refresh_all`] to redraw every visible instance from the latest state.
+//!
+//! The openaction runtime does not expose an instance's stored settings, so the
+//! settings-bearing actions (device/input volume) register theirs into a shared
+//! [`Refresher`] on appear/change and drop them on disappear.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use openaction::*;
+
+use crate::actions::app_volume::{self, AppVolumeSettings};
+use crate::actions::device_volume::{self, DeviceVolumeSettings};
+use crate::actions::input_volume::{self, InputVolumeSettings};
+use crate::actions::output::{self, OutputSettings};
+use crate::color::BarColors;
+use crate::active_window::ActiveWindowHandle;
+use crate::pw::PwHandle;
+
+/// Shared, cheaply-cloneable store of the per-instance settings needed to redraw
+/// the settings-bearing actions from a background task.
+#[derive(Clone, Default)]
+pub struct Refresher {
+	device: Arc<Mutex<HashMap<String, DeviceVolumeSettings>>>,
+	input: Arc<Mutex<HashMap<String, InputVolumeSettings>>>,
+	app: Arc<Mutex<HashMap<String, AppVolumeSettings>>>,
+	/// Output-toggle settings, so its key can reflect an out-of-band default-sink
+	/// change (another app, wpctl, media keys…) — active/greyed and which sink.
+	output: Arc<Mutex<HashMap<String, OutputSettings>>>,
+	/// Bar colours of the default sink/source volume actions (which otherwise
+	/// carry no per-instance settings), so their custom colours survive an
+	/// out-of-band redraw.
+	default_colors: Arc<Mutex<HashMap<String, BarColors>>>,
+	/// Custom title (or `None` = show the current default device) of the default
+	/// sink/source volume actions, so their title survives an out-of-band redraw.
+	default_titles: Arc<Mutex<HashMap<String, Option<String>>>>,
+	active_colors: Arc<Mutex<HashMap<String, BarColors>>>,
+}
+
+impl Refresher {
+	pub fn set_device(&self, instance_id: &str, settings: &DeviceVolumeSettings) {
+		self.device
+			.lock()
+			.unwrap()
+			.insert(instance_id.to_owned(), settings.clone());
+	}
+
+	pub fn forget_device(&self, instance_id: &str) {
+		self.device.lock().unwrap().remove(instance_id);
+	}
+
+	pub fn set_input(&self, instance_id: &str, settings: &InputVolumeSettings) {
+		self.input
+			.lock()
+			.unwrap()
+			.insert(instance_id.to_owned(), settings.clone());
+	}
+
+	pub fn forget_input(&self, instance_id: &str) {
+		self.input.lock().unwrap().remove(instance_id);
+	}
+
+	pub fn set_app(&self, instance_id: &str, settings: &AppVolumeSettings) {
+		self.app
+			.lock()
+			.unwrap()
+			.insert(instance_id.to_owned(), settings.clone());
+	}
+
+	pub fn forget_app(&self, instance_id: &str) {
+		self.app.lock().unwrap().remove(instance_id);
+	}
+
+	pub fn set_output(&self, instance_id: &str, settings: &OutputSettings) {
+		self.output
+			.lock()
+			.unwrap()
+			.insert(instance_id.to_owned(), settings.clone());
+	}
+
+	pub fn forget_output(&self, instance_id: &str) {
+		self.output.lock().unwrap().remove(instance_id);
+	}
+
+	pub fn set_colors(&self, instance_id: &str, colors: &BarColors) {
+		self.default_colors
+			.lock()
+			.unwrap()
+			.insert(instance_id.to_owned(), colors.clone());
+	}
+
+	pub fn forget_colors(&self, instance_id: &str) {
+		self.default_colors.lock().unwrap().remove(instance_id);
+	}
+
+	pub fn set_active_colors(&self, instance_id: &str, colors: &BarColors) {
+		self.active_colors.lock().unwrap().insert(instance_id.to_owned(), colors.clone());
+	}
+
+	pub fn forget_active_colors(&self, instance_id: &str) {
+		self.active_colors.lock().unwrap().remove(instance_id);
+	}
+
+	pub fn set_default_title(&self, instance_id: &str, title: Option<String>) {
+		self.default_titles
+			.lock()
+			.unwrap()
+			.insert(instance_id.to_owned(), title);
+	}
+
+	pub fn forget_default_title(&self, instance_id: &str) {
+		self.default_titles.lock().unwrap().remove(instance_id);
+	}
+}
+
+/// Redraw every visible instance whose surface depends on live volume/mute state.
+pub async fn refresh_all(pw: &PwHandle, refresher: &Refresher, active: &ActiveWindowHandle) {
+	use crate::display;
+
+	let default_colors = refresher.default_colors.lock().unwrap().clone();
+	let colors_for = |inst: &Instance| {
+		default_colors
+			.get(&inst.instance_id)
+			.cloned()
+			.unwrap_or_default()
+	};
+	let default_titles = refresher.default_titles.lock().unwrap().clone();
+	let title_for = |inst: &Instance| default_titles.get(&inst.instance_id).cloned().flatten();
+	let active_colors = refresher.active_colors.lock().unwrap().clone();
+
+	// Default sink volume (bar) + title (current output device, or a custom title).
+	let sink = pw.default_sink_snapshot();
+	for inst in visible_instances(crate::actions::volume::VolumeAction::UUID).await {
+		if sink.known {
+			let _ = display::volume(
+				&inst,
+				true,
+				sink.volume_cubic,
+				sink.mute,
+				&colors_for(&inst),
+			)
+			.await;
+		}
+		let title = crate::actions::volume::resolve_title(&title_for(&inst), pw);
+		let _ = display::title(&inst, &title).await;
+	}
+
+	// Output toggle: reflect the live default sink (active/greyed + which sink).
+	let output = refresher.output.lock().unwrap().clone();
+	for inst in visible_instances(output::OutputAction::UUID).await {
+		let Some(settings) = output.get(&inst.instance_id) else {
+			continue;
+		};
+		let s = output::surface(settings, pw);
+		let _ = display::output(&inst, &s.title, &s.image).await;
+	}
+
+	// Default source (mic) volume (bar) + title (current input device, or custom).
+	let source = pw.default_source_snapshot();
+	for inst in visible_instances(crate::actions::mic_volume::MicVolumeAction::UUID).await {
+		if source.known {
+			let _ = display::mic(
+				&inst,
+				true,
+				source.volume_cubic,
+				source.mute,
+				&colors_for(&inst),
+			)
+			.await;
+		}
+		let title = crate::actions::mic_volume::resolve_title(&title_for(&inst), pw);
+		let _ = display::title(&inst, &title).await;
+	}
+	if source.known {
+		// Push to Talk shows the mic's live state (state 0 = open, 1 = muted).
+		for inst in visible_instances(crate::actions::push_to_talk::PushToTalkAction::UUID).await {
+			let _ = inst.set_state(if source.mute { 1 } else { 0 }).await;
+		}
+	}
+
+	// Specific output devices (per-instance target sink).
+	let device = refresher.device.lock().unwrap().clone();
+	for inst in visible_instances(device_volume::DeviceVolumeAction::UUID).await {
+		let Some(settings) = device.get(&inst.instance_id) else {
+			continue;
+		};
+		let (vol, mute) = settings
+			.sink
+			.as_deref()
+			.and_then(|n| pw.sink_state(n))
+			.unwrap_or((0.0, false));
+		let _ = display::device(
+			&inst,
+			&device_volume::label(settings, pw),
+			vol,
+			mute,
+			&settings.colors,
+		)
+		.await;
+	}
+
+	// Specific input devices (per-instance target source).
+	let input = refresher.input.lock().unwrap().clone();
+	for inst in visible_instances(input_volume::InputVolumeAction::UUID).await {
+		let Some(settings) = input.get(&inst.instance_id) else {
+			continue;
+		};
+		let (vol, mute) = settings
+			.source
+			.as_deref()
+			.and_then(|n| pw.source_state(n))
+			.unwrap_or((0.0, false));
+		let _ = display::input(
+			&inst,
+			&input_volume::label(settings, pw),
+			vol,
+			mute,
+			&settings.colors,
+		)
+		.await;
+	}
+
+	// Active application volume (focused KDE/KWin window -> PID -> PipeWire stream).
+	for inst in visible_instances(crate::actions::active_app_volume::ActiveAppVolumeAction::UUID).await {
+		if active.pid() != 0 {
+			if let Some((name, vol, mute)) = pw.app_pid_state(active.pid()) {
+				let _ = display::app(&inst, Some(&name), vol, mute, &active_colors.get(&inst.instance_id).cloned().unwrap_or_default()).await;
+				continue;
+			}
+		}
+		let _ = display::app(&inst, None, 0.0, false, &active_colors.get(&inst.instance_id).cloned().unwrap_or_default()).await;
+	}
+
+	// Per-app volume (per-instance target application).
+	let app = refresher.app.lock().unwrap().clone();
+	for inst in visible_instances(app_volume::AppVolumeAction::UUID).await {
+		let Some(settings) = app.get(&inst.instance_id) else {
+			continue;
+		};
+		let target = settings.app.as_deref().filter(|s| !s.is_empty());
+		let (vol, mute) = target.and_then(|a| pw.app_state(a)).unwrap_or((0.0, false));
+		let _ = display::app(&inst, target, vol, mute, &settings.colors).await;
+	}
+}

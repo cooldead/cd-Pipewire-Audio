@@ -1,0 +1,8 @@
+/target
+# Build output bundle assembled by build.ts / CI (named after the plugin id)
+/com.cooldeadpipewire.sdPlugin
+/*.zip
+
+/dist
+
+*.bak

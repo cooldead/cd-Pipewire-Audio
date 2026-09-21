@@ -1,0 +1,18 @@
+{
+    "KPlugin": {
+        "Name": "CooldeadPipeWire Active Window Bridge",
+        "Description": "Reports the focused KWin window PID to CooldeadPipeWire",
+        "Icon": "preferences-system-windows",
+        "Authors": [
+            {
+                "Name": "CooldeadPipeWire"
+            }
+        ],
+        "Id": "cooldeadpipewire-active-window",
+        "Version": "1.0",
+        "License": "GPL-3.0-or-later"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "KPackageStructure": "KWin/Script"
+}
