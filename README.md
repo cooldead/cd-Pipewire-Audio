@@ -2,7 +2,7 @@
 
 CooldeadPipeWire is a Linux PipeWire audio plugin for OpenDeck.
 
-It is based on [OpenDeck PipeWire](https://github.com/sjourdois/opendeck-pipewire) by sjourdois, with additional features and fixes focused on per-application audio control and KDE Plasma Wayland integration.
+It is based on [OpenDeck PipeWire](https://github.com/sjourdois/opendeck-pipewire) by sjourdois, with additional features and fixes focused on per-application game audio control and KDE Plasma Wayland integration.
 
 ## What CooldeadPipeWire adds
 
@@ -14,13 +14,9 @@ Added a new **Active Application Volume** action.
 
 The action controls the volume of the application belonging to the currently focused window.
 
-This makes it possible to use a Stream Deck encoder to control whichever application is currently active without creating a separate Stream Deck action for every application.
+The primary use case for this feature is controlling games, including games running through Proton/Wine.
 
-For example:
-
-- Focus a game → encoder controls the game's volume
-- Focus a browser → encoder controls the browser's volume
-- Focus Discord → encoder controls Discord's volume
+> **Current limitation:** Active Application Volume is currently intended primarily for games. Compatibility with general desktop applications such as web browsers or Discord is not guaranteed.
 
 The action also supports application mute.
 
@@ -38,13 +34,13 @@ org.cooldeadpipewire.PipeWire.ActiveWindow
 
 This feature is specifically intended for KDE Plasma Wayland.
 
-### Proton / Wine application support
+### Proton / Wine game support
 
-Active Application Volume works with applications running through Wine/Proton when their audio streams are exposed through PipeWire.
+Active Application Volume works with games running through Wine/Proton when their audio streams are exposed through PipeWire.
 
 The implementation matches the focused application's process ID against PipeWire application streams rather than relying solely on the displayed application name.
 
-This allows applications such as Windows games running through Proton/Wine to be controlled.
+This allows Windows games running through Proton/Wine to be controlled from the Stream Deck.
 
 ### Output Device icon reliability
 
@@ -131,6 +127,14 @@ For KDE Plasma Wayland:
 ./install-cooldeadpipewire-active-window.sh
 ```
 
+The installer:
+
+1. Installs the CooldeadPipeWire KWin script.
+2. Enables the script in KDE.
+3. Reloads KWin so the bridge becomes active immediately.
+
+The bridge is registered as a KDE KWin script and should automatically load when KDE starts. It does not need to be reinstalled after every reboot.
+
 Restart OpenDeck after installation.
 
 The CooldeadPipeWire actions should now appear in OpenDeck.
@@ -163,6 +167,8 @@ application.process.binary = "wine64-preloader"
 
 CooldeadPipeWire uses the process relationship rather than requiring the PipeWire application name to exactly match the focused window title.
 
+This allows the encoder to control the audio of supported Proton/Wine games based on the currently focused game window.
+
 ---
 
 ## Updating
@@ -185,6 +191,12 @@ Restart OpenDeck after updating.
 
 The KDE active-window bridge normally does not need to be reinstalled unless its script has changed.
 
+If the KWin bridge itself is updated, run:
+
+```bash
+./install-cooldeadpipewire-active-window.sh
+```
+
 ---
 
 ## Uninstalling
@@ -198,10 +210,16 @@ rm -rf ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
 Remove the KDE active-window bridge:
 
 ```bash
-rm -rf ~/.local/share/kwin/scripts/cooldeadpipewire-active-window
+kpackagetool6 --type=KWin/Script --remove cooldeadpipewire-active-window
 ```
 
-Restart OpenDeck and KDE if necessary.
+Disable the bridge in KDE:
+
+```bash
+kwriteconfig6 --file ~/.config/kwinrc --group Plugins --key cooldeadpipewire-active-windowEnabled false
+```
+
+Restart KDE if necessary.
 
 ---
 
