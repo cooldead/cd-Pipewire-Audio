@@ -16,19 +16,6 @@ fn data_uri(svg: &str) -> String {
 	format!("data:image/svg+xml;base64,{b64}")
 }
 
-/// The Output Device key icon (normal) as a data URI. Set explicitly (rather than
-/// via a manifest state) so the picker can stay a single state — switching states
-/// would reset the user's per-state title font/position.
-pub fn output_icon() -> String {
-	data_uri(include_str!("../assets/icons/output.svg"))
-}
-
-/// The greyed Output Device icon, shown when the key is inactive (the default
-/// output isn't one of the chosen sinks and `when_inactive == Disable`).
-pub fn output_disabled_icon() -> String {
-	data_uri(include_str!("../assets/icons/outputDisabled.svg"))
-}
-
 /// A bold slash drawn corner-to-corner across the whole key to signal mute, in
 /// the configured mute colour. Overlaid last (on top of the label/bar) by the
 /// keypad renderers when muted; empty when unmuted.
@@ -40,30 +27,6 @@ fn mute_slash(muted: bool, color: &str) -> String {
 	} else {
 		String::new()
 	}
-}
-
-/// A volume key: a big percentage with a horizontal level bar underneath.
-/// `volume_cubic` is on the 0..=1 (perceptual) scale; values above 1 are boost.
-pub fn volume_key(volume_cubic: f32, muted: bool, colors: &BarColors) -> String {
-	let pct = (volume_cubic * 100.0).round() as i32;
-	let fill_w = (volume_cubic.clamp(0.0, 1.0) * 100.0).round() as i32;
-	let (bar, label, label_color, size) = if muted {
-		(colors.mute(), "muted".to_owned(), "#999999", 26)
-	} else if volume_cubic > 1.001 {
-		("#d8843d", format!("{pct}%"), "#ffffff", 34) // boosted (fixed warning colour)
-	} else {
-		(colors.active(), format!("{pct}%"), "#ffffff", 34)
-	};
-
-	let svg = format!(
-		r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-<text x="64" y="66" font-family="sans-serif" font-size="{size}" font-weight="bold" fill="{label_color}" text-anchor="middle">{label}</text>
-<rect x="14" y="92" width="100" height="12" rx="6" fill="#3a3a3a"/>
-<rect x="14" y="92" width="{fill_w}" height="12" rx="6" fill="{bar}"/>
-{slash}</svg>"##,
-		slash = mute_slash(muted, colors.mute())
-	);
-	data_uri(&svg)
 }
 
 /// A labelled level-bar key/encoder: a custom label with a level bar (no

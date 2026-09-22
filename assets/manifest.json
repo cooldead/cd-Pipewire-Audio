@@ -1,224 +1,45 @@
 {
-	"Name": "CooldeadPipeWire",
-	"Description": "Native (Rust) PipeWire/WirePlumber audio control for OpenDeck. No Node.js.",
-	"Author": "Stephane Jourdois",
-	"Version": "0.5.0",
-	"CodePaths": {
-		"x86_64-unknown-linux-gnu": "x86_64-unknown-linux-gnu/bin/cooldeadpipewire",
-		"aarch64-unknown-linux-gnu": "aarch64-unknown-linux-gnu/bin/cooldeadpipewire"
-	},
-	"CodePathLin": "x86_64-unknown-linux-gnu/bin/cooldeadpipewire",
-	"Icon": "icons/plugin",
-	"Category": "CooldeadPipeWire",
-	"OS": [
-		{
-			"Platform": "linux"
-		}
-	],
-	"Actions": [
-		{
-			"Icon": "icons/volume",
-			"Name": "Output Volume",
-			"States": [
-				{
-					"Image": "icons/volume"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Adjust the default output volume",
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Adjust volume",
-					"Push": "Toggle mute",
-					"Touch": "Toggle mute"
-				}
-			},
-			"UUID": "com.cooldeadpipewire.pipewire.volume",
-			"PropertyInspectorPath": "propertyInspector/volume.html"
-		},
-		{
-			"Icon": "icons/volume",
-			"Name": "Output Device Volume",
-			"States": [
-				{
-					"Image": "icons/volume"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Adjust a specific output device's volume",
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Adjust volume",
-					"Push": "Toggle mute",
-					"Touch": "Toggle mute"
-				}
-			},
-			"UUID": "com.cooldeadpipewire.pipewire.devicevolume",
-			"PropertyInspectorPath": "propertyInspector/deviceVolume.html"
-		},
-		{
-			"Icon": "icons/appVolume",
-			"Name": "Active Application Volume",
-			"States": [
-				{
-					"Image": "icons/appVolume"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Adjust the audio volume of the currently focused application",
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Adjust active application volume",
-					"Push": "Toggle mute",
-					"Touch": "Toggle mute"
-				}
-			},
-			"UUID": "com.cooldeadpipewire.pipewire.activeappvolume",
-			"PropertyInspectorPath": "propertyInspector/activeAppVolume.html"
-		},
-		{
-			"Icon": "icons/appVolume",
-			"Name": "Output App Volume",
-			"States": [
-				{
-					"Image": "icons/appVolume"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Adjust a specific application's volume",
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Adjust volume",
-					"Push": "Toggle mute",
-					"Touch": "Toggle mute"
-				}
-			},
-			"UUID": "com.cooldeadpipewire.pipewire.appvolume",
-			"PropertyInspectorPath": "propertyInspector/appVolume.html"
-		},
-		{
-			"Icon": "icons/output",
-			"Name": "Output Device",
-			"States": [
-				{
-					"Image": "icons/output"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Switch or cycle the system default output device",
-			"UUID": "com.cooldeadpipewire.pipewire.output",
-			"PropertyInspectorPath": "propertyInspector/output.html"
-		},
-		{
-			"Icon": "icons/mic",
-			"Name": "Input Volume",
-			"States": [
-				{
-					"Image": "icons/mic"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Adjust the default input (microphone) volume",
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Adjust volume",
-					"Push": "Toggle mute",
-					"Touch": "Toggle mute"
-				}
-			},
-			"UUID": "com.cooldeadpipewire.pipewire.micvolume",
-			"PropertyInspectorPath": "propertyInspector/micVolume.html"
-		},
-		{
-			"Icon": "icons/input",
-			"Name": "Input Device Volume",
-			"States": [
-				{
-					"Image": "icons/input"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Adjust a specific input device's volume",
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Adjust volume",
-					"Push": "Toggle mute",
-					"Touch": "Toggle mute"
-				}
-			},
-			"UUID": "com.cooldeadpipewire.pipewire.inputvolume",
-			"PropertyInspectorPath": "propertyInspector/inputVolume.html"
-		},
-		{
-			"Icon": "icons/switchInput",
-			"Name": "Input Device",
-			"States": [
-				{
-					"Image": "icons/switchInput"
-				}
-			],
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Switch or cycle the system default input device",
-			"UUID": "com.cooldeadpipewire.pipewire.switchinput",
-			"PropertyInspectorPath": "propertyInspector/switchInput.html"
-		},
-		{
-			"Icon": "icons/pushToTalk",
-			"Name": "Push to Talk",
-			"States": [
-				{
-					"Image": "icons/pushToTalk"
-				},
-				{
-					"Image": "icons/pushToTalkMuted"
-				}
-			],
-			"DisableAutomaticStates": true,
-			"Controllers": [
-				"Keypad"
-			],
-			"SupportedInMultiActions": true,
-			"Tooltip": "Hold to unmute the microphone (push-to-talk)",
-			"UUID": "com.cooldeadpipewire.pipewire.pushtotalk",
-			"PropertyInspectorPath": "propertyInspector/pushToTalk.html"
-		}
-	]
+    "Name": "CooldeadPipeWire",
+    "Description": "Native (Rust) PipeWire/WirePlumber audio control for OpenDeck. No Node.js.",
+    "Author": "Stephane Jourdois",
+    "Version": "0.5.0",
+    "CodePaths": {
+        "x86_64-unknown-linux-gnu": "x86_64-unknown-linux-gnu/bin/cooldeadpipewire",
+        "aarch64-unknown-linux-gnu": "aarch64-unknown-linux-gnu/bin/cooldeadpipewire"
+    },
+    "CodePathLin": "x86_64-unknown-linux-gnu/bin/cooldeadpipewire",
+    "Icon": "icons/plugin",
+    "Category": "CooldeadPipeWire",
+    "OS": [
+        {
+            "Platform": "linux"
+        }
+    ],
+    "Actions": [
+        {
+            "Icon": "icons/appVolume",
+            "Name": "Active Application Volume",
+            "States": [
+                {
+                    "Image": "icons/appVolume"
+                }
+            ],
+            "Controllers": [
+                "Keypad",
+                "Encoder"
+            ],
+            "SupportedInMultiActions": true,
+            "Tooltip": "Adjust the audio volume of the currently focused application",
+            "Encoder": {
+                "layout": "$B1",
+                "TriggerDescription": {
+                    "Rotate": "Adjust active application volume",
+                    "Push": "Toggle mute",
+                    "Touch": "Toggle mute"
+                }
+            },
+            "UUID": "com.cooldeadpipewire.pipewire.activeappvolume",
+            "PropertyInspectorPath": "propertyInspector/activeAppVolume.html"
+        }
+    ]
 }

@@ -13,9 +13,7 @@ mod pw;
 mod refresh;
 mod render;
 
-use actions::{
-	active_app_volume, app_volume, device_volume, input_volume, mic_volume, output, push_to_talk, switch_input, volume,
-};
+use actions::active_app_volume;
 use openaction::*;
 
 #[tokio::main]
@@ -47,44 +45,12 @@ async fn main() -> OpenActionResult<()> {
 	let refresher = refresh::Refresher::default();
 	let active = active_window::start();
 
-	register_action(volume::VolumeAction {
-		pw: pw.clone(),
-		refresher: refresher.clone(),
-	})
-	.await;
-	register_action(output::OutputAction {
-		pw: pw.clone(),
-		refresher: refresher.clone(),
-	})
-	.await;
 	register_action(active_app_volume::ActiveAppVolumeAction {
 		pw: pw.clone(),
 		active: active.clone(),
 		refresher: refresher.clone(),
 	})
 	.await;
-	register_action(app_volume::AppVolumeAction {
-		pw: pw.clone(),
-		refresher: refresher.clone(),
-	})
-	.await;
-	register_action(device_volume::DeviceVolumeAction {
-		pw: pw.clone(),
-		refresher: refresher.clone(),
-	})
-	.await;
-	register_action(mic_volume::MicVolumeAction {
-		pw: pw.clone(),
-		refresher: refresher.clone(),
-	})
-	.await;
-	register_action(input_volume::InputVolumeAction {
-		pw: pw.clone(),
-		refresher: refresher.clone(),
-	})
-	.await;
-	register_action(switch_input::SwitchInputAction { pw: pw.clone() }).await;
-	register_action(push_to_talk::PushToTalkAction { pw: pw.clone() }).await;
 
 	// Re-render visible keys whenever PipeWire state changes out-of-band (volume
 	// changed by wpctl, media keys, another app…). The PipeWire thread signals

@@ -21,30 +21,15 @@
 mod backend;
 mod handle;
 mod pod;
-mod types;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub use handle::{PwHandle, start};
-pub use types::{AppDesc, SinkDesc, SinkSnapshot};
 
 /// Shared state published from the PipeWire thread to the actions. Bundled into a
 /// struct to keep `run_loop`/`Inner` signatures small as the surface grows.
 struct Channels {
-	state: Arc<Mutex<SinkSnapshot>>,
-	source_state: Arc<Mutex<SinkSnapshot>>,
-	sinks: Arc<Mutex<Vec<SinkDesc>>>,
-	sources: Arc<Mutex<Vec<SinkDesc>>>,
-	apps: Arc<Mutex<Vec<AppDesc>>>,
 	process_apps: Arc<Mutex<HashMap<u32, (String, f32, bool)>>>,
-	/// `node.name` of the current default sink / source, for the cycling pickers.
-	default_sink_name: Arc<Mutex<Option<String>>>,
-	default_source_name: Arc<Mutex<Option<String>>>,
-	/// `node.name` of a routable stream -> `node.name` of the sink it currently
-	/// targets, for keys that switch a virtual sink's destination.
-	stream_targets: Arc<Mutex<HashMap<String, String>>>,
-	/// `node.name` of a routable stream -> the sink applications feed it through.
-	stream_sinks: Arc<Mutex<HashMap<String, String>>>,
 	notify: Arc<tokio::sync::watch::Sender<u64>>,
 }
