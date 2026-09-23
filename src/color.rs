@@ -13,7 +13,7 @@ pub const MUTE: &str = "#ff3b30";
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(default)]
 pub struct BarColors {
-	/// Level-bar colour when unmuted (default green, [`ACTIVE`]).
+	/// Optional level-bar colour when unmuted.
 	pub unmute_color: Option<String>,
 	/// Level-bar (and keypad mute-slash) colour when muted (default red, [`MUTE`]).
 	pub mute_color: Option<String>,
@@ -63,7 +63,7 @@ mod tests {
 		// The PI may send settings without the colour fields at all.
 		let s: Settings = serde_json::from_str(r#"{"step":7}"#).unwrap();
 		assert_eq!(s.step, 7);
-		assert_eq!(s.colors.active(), ACTIVE);
+		assert_eq!(s.colors.unmute_color, None);
 		assert_eq!(s.colors.mute(), MUTE);
 	}
 
@@ -71,7 +71,8 @@ mod tests {
 	fn custom_and_invalid_colors() {
 		let s: Settings =
 			serde_json::from_str(r##"{"unmute_color":"#123abc","mute_color":"oops"}"##).unwrap();
-		assert_eq!(s.colors.active(), "#123abc"); // valid hex kept
+
+		assert_eq!(s.colors.unmute_color.as_deref(), Some("#123abc"));
 		assert_eq!(s.colors.mute(), MUTE); // malformed falls back
 	}
 }

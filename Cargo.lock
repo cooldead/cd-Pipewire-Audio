@@ -136,6 +136,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cd-active-app-volume"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "log",
+ "openaction",
+ "pipewire",
+ "serde",
+ "serde_json",
+ "simplelog",
+ "tokio",
+ "zbus",
+]
+
+[[package]]
 name = "cexpr"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -176,22 +192,6 @@ name = "cookie-factory"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9885fa71e26b8ab7855e2ec7cae6e9b380edff76cd052e07c683a0319d51b3a2"
-
-[[package]]
-name = "cooldeadpipewire"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "base64",
- "log",
- "openaction",
- "pipewire",
- "serde",
- "serde_json",
- "simplelog",
- "tokio",
- "zbus",
-]
 
 [[package]]
 name = "cpufeatures"

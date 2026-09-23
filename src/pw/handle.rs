@@ -19,23 +19,26 @@ pub struct PwHandle {
 }
 
 impl PwHandle {
-	/// Send an intent to the PipeWire backend thread.
 	pub fn send(&self, cmd: Command) {
 		let _ = self.tx.lock().unwrap().send(cmd);
 	}
-
-	/// Live aggregate (application name, volume, mute) for an OS process id.
-	pub fn app_pid_state(&self, pid: u32) -> Option<(String, f32, bool)> {
-		self.process_apps.lock().unwrap().get(&pid).cloned()
+	/// Prefer the exact focused PID; if it has no audio, return the first
+	/// related PID that currently owns a PipeWire output stream.
+	pub fn app_pids_state(&self, pids: &[u32]) -> Option<(u32, String, f32, bool)> {
+		let apps = self.process_apps.lock().unwrap();
+		for &pid in pids {
+			if let Some((name, volume, mute)) = apps.get(&pid) {
+				return Some((pid, name.clone(), *volume, *mute));
+			}
+		}
+		None
 	}
 
-	/// Subscribe to PipeWire state-change notifications.
 	pub fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
 		self.notify.subscribe()
 	}
 }
 
-/// Start the PipeWire backend thread. Returns immediately.
 pub fn start() -> Result<PwHandle> {
 	let process_apps = Arc::new(Mutex::new(HashMap::new()));
 
@@ -50,7 +53,7 @@ pub fn start() -> Result<PwHandle> {
 	let (tx, rx) = pipewire::channel::channel();
 
 	std::thread::Builder::new()
-		.name("cooldeadpipewire-pw".into())
+		.name("cd-active-app-volume-pw".into())
 		.spawn(move || {
 			if let Err(e) = run_loop(rx, chans) {
 				log::error!("PipeWire backend stopped: {e:#}");

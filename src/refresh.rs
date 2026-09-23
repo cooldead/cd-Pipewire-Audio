@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use openaction::*;
 
 use crate::active_window::ActiveWindowHandle;
+use crate::app_match::FocusedApp;
 use crate::color::BarColors;
 use crate::pw::PwHandle;
 
@@ -32,12 +33,45 @@ impl Refresher {
 	}
 }
 
+/// Build the same focused-process candidate list used by ActiveAppVolumeAction.
+///
+/// The exact KWin PID is always first. Descendants follow so applications such
+/// as Brave/Chromium can resolve their audio-owning child process.
+fn focused_pids(active: &ActiveWindowHandle) -> Vec<u32> {
+	let focused = active.pid();
+
+	if focused == 0 {
+		return Vec::new();
+	}
+
+	let Some(app) = FocusedApp::from_pid(focused) else {
+		return vec![focused];
+	};
+
+	let mut related: Vec<u32> = app.related_pids().filter(|&pid| pid != focused).collect();
+
+	related.sort_unstable();
+
+	let mut pids = Vec::with_capacity(related.len() + 1);
+	pids.push(focused);
+	pids.extend(related);
+
+	pids
+}
+
 /// Redraw every visible CD-Active App Volume instance from live state.
 pub async fn refresh_all(pw: &PwHandle, refresher: &Refresher, active: &ActiveWindowHandle) {
 	use crate::display;
 
 	let active_colors = refresher.active_colors.lock().unwrap().clone();
 
+	let pids = focused_pids(active);
+
+	let state = if pids.is_empty() {
+		None
+	} else {
+		pw.app_pids_state(&pids)
+	};
 	for inst in
 		visible_instances(crate::actions::active_app_volume::ActiveAppVolumeAction::UUID).await
 	{
@@ -46,13 +80,14 @@ pub async fn refresh_all(pw: &PwHandle, refresher: &Refresher, active: &ActiveWi
 			.cloned()
 			.unwrap_or_default();
 
-		if active.pid() != 0 {
-			if let Some((name, vol, mute)) = pw.app_pid_state(active.pid()) {
-				let _ = display::app(&inst, Some(&name), vol, mute, &colors).await;
-				continue;
+		match &state {
+			Some((_pid, name, vol, mute)) => {
+				let _ = display::app(&inst, Some(name), *vol, *mute, &colors).await;
+			}
+
+			None => {
+				let _ = display::app(&inst, None, 0.0, false, &colors).await;
 			}
 		}
-
-		let _ = display::app(&inst, None, 0.0, false, &colors).await;
 	}
 }

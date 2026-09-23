@@ -6,6 +6,7 @@
 
 mod actions;
 mod active_window;
+mod app_match;
 mod color;
 mod command;
 mod display;

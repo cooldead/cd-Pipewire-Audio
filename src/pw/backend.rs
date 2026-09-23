@@ -22,8 +22,10 @@ struct NodeRef {
 	is_stream: bool,
 	/// For an application output stream: its `application.name`.
 	app_name: Option<String>,
-	/// For an application output stream: its OS process id (`application.process.id`).
+	/// PID exposed directly by the PipeWire node, when available.
 	process_id: Option<u32>,
+	/// PipeWire client that owns this node.
+	client_id: Option<u32>,
 	mute: bool,
 	volume_cubic: f32,
 	proxy: pipewire::node::Node,
@@ -31,8 +33,18 @@ struct NodeRef {
 	_listener: pipewire::node::NodeListener,
 }
 
+struct ClientRef {
+	// Keep both alive so PipeWire continues sending Client info events.
+	_proxy: pipewire::client::Client,
+	_listener: pipewire::client::ClientListener,
+}
+
 struct Inner {
 	nodes: HashMap<u32, NodeRef>,
+	/// PipeWire client ID -> OS process ID.
+	clients: HashMap<u32, u32>,
+	/// Bound PipeWire clients kept alive for their info listeners.
+	client_refs: HashMap<u32, ClientRef>,
 	chans: Channels,
 }
 
@@ -40,10 +52,17 @@ impl Inner {
 	fn new(chans: Channels) -> Self {
 		Self {
 			nodes: HashMap::new(),
+			clients: HashMap::new(),
+			client_refs: HashMap::new(),
 			chans,
 		}
 	}
-
+	fn node_pid(&self, node: &NodeRef) -> Option<u32> {
+		node.process_id.or_else(|| {
+			node.client_id
+				.and_then(|client_id| self.clients.get(&client_id).copied())
+		})
+	}
 	fn refresh_apps(&self) {
 		use std::collections::BTreeMap;
 
@@ -53,7 +72,7 @@ impl Inner {
 			let Some(app) = n.app_name.as_deref().filter(|s| !s.is_empty()) else {
 				continue;
 			};
-			let Some(pid) = n.process_id else {
+			let Some(pid) = self.node_pid(n) else {
 				continue;
 			};
 
@@ -62,7 +81,6 @@ impl Inner {
 			entry.2 += 1;
 			entry.3 &= n.mute;
 		}
-
 		*self.chans.process_apps.lock().unwrap() = by_pid
 			.into_iter()
 			.map(|(pid, (name, sum, count, mute))| (pid, (name, sum / count as f32, mute)))
@@ -77,6 +95,8 @@ impl Inner {
 
 	fn reset(&mut self) {
 		self.nodes.clear();
+		self.clients.clear();
+		self.client_refs.clear();
 		self.refresh_apps();
 	}
 }
@@ -165,12 +185,66 @@ fn on_global(
 	let Some(props) = global.props else { return };
 
 	match global.type_ {
+		ObjectType::Client => {
+			let id = global.id;
+
+			// Bind the client. Some applications (especially Wine/Proton games)
+			// don't expose application.process.id in the registry announcement,
+			// but do expose it later through the Client info event.
+			let client: pipewire::client::Client = match registry.bind(global) {
+				Ok(client) => client,
+				Err(e) => {
+					log::warn!("Failed to bind client {id}: {e}");
+					return;
+				}
+			};
+
+			let inner_info = inner.clone();
+
+			let listener = client
+				.add_listener_local()
+				.info(move |info| {
+					let Some(props) = info.props() else {
+						return;
+					};
+
+					let process_id = props
+						.get("application.process.id")
+						.and_then(|s| s.parse::<u32>().ok());
+
+					if let Some(pid) = process_id {
+						let mut b = inner_info.borrow_mut();
+						b.clients.insert(id, pid);
+						b.refresh_apps();
+					}
+				})
+				.register();
+
+			// Seed the PID immediately when the registry already provides it.
+			if let Some(pid) = props
+				.get("application.process.id")
+				.and_then(|s| s.parse::<u32>().ok())
+			{
+				inner.borrow_mut().clients.insert(id, pid);
+			}
+
+			inner.borrow_mut().client_refs.insert(
+				id,
+				ClientRef {
+					_proxy: client,
+					_listener: listener,
+				},
+			);
+
+			inner.borrow().refresh_apps();
+		}
 		ObjectType::Node => {
 			let media_class = props.get("media.class").unwrap_or("");
 			let app_name: Option<String> = props.get("application.name").map(str::to_owned);
 			let process_id = props
 				.get("application.process.id")
 				.and_then(|s| s.parse::<u32>().ok());
+			let client_id = props.get("client.id").and_then(|s| s.parse::<u32>().ok());
 			let is_stream = media_class == "Stream/Output/Audio" && app_name.is_some();
 
 			// Bind the node so we can read its Props (volume/mute) and set them.
@@ -223,6 +297,7 @@ fn on_global(
 					is_stream,
 					app_name,
 					process_id,
+					client_id,
 					volume_cubic: 0.0,
 					mute: false,
 					proxy: node,
@@ -239,41 +314,71 @@ fn on_global(
 fn on_global_remove(inner: &Rc<RefCell<Inner>>, id: u32) {
 	let mut b = inner.borrow_mut();
 	b.nodes.remove(&id);
+	b.clients.remove(&id);
+	b.client_refs.remove(&id);
 	b.refresh_apps();
 }
-
 fn on_command(inner: &Rc<RefCell<Inner>>, cmd: Command) {
 	log::info!("command {cmd:?}");
 
 	match cmd {
-		Command::AdjustAppPidVolume(pid, delta) => {
+		Command::AdjustAppPidsVolume(pids, delta) => {
 			let b = inner.borrow();
+
+			// Prefer the exact focused PID when it directly owns an audio stream.
+			// If it does not, search the focused application's descendant PIDs.
+			let exact_pid = pids.first().copied();
+
+			let exact_exists = exact_pid.is_some_and(|pid| {
+				b.nodes
+					.values()
+					.any(|n| n.is_stream && b.node_pid(n) == Some(pid))
+			});
+
+			let selected_pids: &[u32] = if exact_exists { &pids[..1] } else { &pids };
+
 			let mut matched = 0;
 
-			for n in b
-				.nodes
-				.values()
-				.filter(|n| n.is_stream && n.process_id == Some(pid))
-			{
+			for n in b.nodes.values().filter(|n| {
+				n.is_stream
+					&& b.node_pid(n)
+						.is_some_and(|pid| selected_pids.contains(&pid))
+			}) {
 				let target = (n.volume_cubic + delta).clamp(0.0, 1.5);
 				set_node_props(&n.proxy, Some(cubic_to_linear(target)), None);
 				matched += 1;
 			}
 
 			if matched == 0 {
-				log::warn!("No active audio streams for PID {pid}");
+				log::warn!("No active audio streams for candidate PIDs {pids:?}");
 			}
 		}
 
-		Command::SetAppPidMute(pid, value) => {
+		Command::SetAppPidsMute(pids, value) => {
 			let b = inner.borrow();
+
+			let exact_pid = pids.first().copied();
+
+			let exact_exists = exact_pid.is_some_and(|pid| {
+				b.nodes
+					.values()
+					.any(|n| n.is_stream && b.node_pid(n) == Some(pid))
+			});
+
+			let selected_pids: &[u32] = if exact_exists { &pids[..1] } else { &pids };
+
 			let streams: Vec<&NodeRef> = b
 				.nodes
 				.values()
-				.filter(|n| n.is_stream && n.process_id == Some(pid))
+				.filter(|n| {
+					n.is_stream
+						&& b.node_pid(n)
+							.is_some_and(|pid| selected_pids.contains(&pid))
+				})
 				.collect();
 
 			let currently_muted = !streams.is_empty() && streams.iter().all(|n| n.mute);
+
 			let mute = value.unwrap_or(!currently_muted);
 
 			for n in &streams {
@@ -281,12 +386,11 @@ fn on_command(inner: &Rc<RefCell<Inner>>, cmd: Command) {
 			}
 
 			if streams.is_empty() {
-				log::warn!("No active audio streams for PID {pid}");
+				log::warn!("No active audio streams for candidate PIDs {pids:?}");
 			}
 		}
 	}
 }
-
 /// Parse a Props POD coming from a node and cache channelVolumes + mute.
 fn update_node_from_props(inner: &Rc<RefCell<Inner>>, id: u32, pod: &pipewire::spa::pod::Pod) {
 	use pipewire::spa::pod::Value;

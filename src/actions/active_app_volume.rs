@@ -1,9 +1,11 @@
 use crate::active_window::ActiveWindowHandle;
+use crate::app_match::FocusedApp;
 use crate::color::BarColors;
 use crate::command::Command;
 use crate::pw::PwHandle;
 use openaction::*;
 use serde::{Deserialize, Serialize};
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct ActiveAppVolumeSettings {
@@ -12,6 +14,7 @@ pub struct ActiveAppVolumeSettings {
 	#[serde(flatten)]
 	pub colors: BarColors,
 }
+
 impl Default for ActiveAppVolumeSettings {
 	fn default() -> Self {
 		Self {
@@ -21,21 +24,19 @@ impl Default for ActiveAppVolumeSettings {
 		}
 	}
 }
+
 pub struct ActiveAppVolumeAction {
 	pub pw: PwHandle,
 	pub active: ActiveWindowHandle,
 	pub refresher: crate::refresh::Refresher,
 }
+
 #[async_trait]
 impl Action for ActiveAppVolumeAction {
 	const UUID: &'static str = super::action_uuid!("activeappvolume");
 	type Settings = ActiveAppVolumeSettings;
+
 	async fn key_down(&self, i: &Instance, s: &Self::Settings) -> OpenActionResult<()> {
-		log::info!(
-			"ActiveAppVolume: key_down instance={} step={}",
-			i.instance_id,
-			s.step
-		);
 		let d = super::step_fraction(s.step);
 		match s.mode {
 			super::KeyMode::Up => self.adjust(i, s, d).await,
@@ -43,6 +44,7 @@ impl Action for ActiveAppVolumeAction {
 			super::KeyMode::Mute => self.toggle_mute(i, s).await,
 		}
 	}
+
 	async fn dial_rotate(
 		&self,
 		i: &Instance,
@@ -60,14 +62,11 @@ impl Action for ActiveAppVolumeAction {
 		self.adjust(i, s, t as f32 * super::step_fraction(s.step))
 			.await
 	}
+
 	async fn dial_down(&self, i: &Instance, s: &Self::Settings) -> OpenActionResult<()> {
-		log::info!(
-			"ActiveAppVolume: dial_down instance={} pid={}",
-			i.instance_id,
-			self.active.pid()
-		);
 		self.toggle_mute(i, s).await
 	}
+
 	async fn touch_tap(
 		&self,
 		i: &Instance,
@@ -75,38 +74,50 @@ impl Action for ActiveAppVolumeAction {
 		_: (u16, u16),
 		_: bool,
 	) -> OpenActionResult<()> {
-		log::info!(
-			"ActiveAppVolume: touch_tap instance={} pid={}",
-			i.instance_id,
-			self.active.pid()
-		);
 		self.toggle_mute(i, s).await
 	}
+
 	async fn will_appear(&self, i: &Instance, s: &Self::Settings) -> OpenActionResult<()> {
-		log::info!(
-			"ActiveAppVolume: will_appear instance={} pid={}",
-			i.instance_id,
-			self.active.pid()
-		);
 		self.refresher.set_active_colors(&i.instance_id, &s.colors);
 		self.render(i, s).await
 	}
+
 	async fn will_disappear(&self, i: &Instance, _s: &Self::Settings) -> OpenActionResult<()> {
 		self.refresher.forget_active_colors(&i.instance_id);
 		Ok(())
 	}
+
 	async fn did_receive_settings(&self, i: &Instance, s: &Self::Settings) -> OpenActionResult<()> {
 		self.refresher.set_active_colors(&i.instance_id, &s.colors);
 		self.render(i, s).await
 	}
 }
+
 impl ActiveAppVolumeAction {
-	fn state(&self) -> Option<(u32, String, f32, bool)> {
-		let pid = self.active.pid();
-		if pid == 0 {
-			return None;
+	/// Exact focused PID first, followed by descendants.
+	fn focused_pids(&self) -> Vec<u32> {
+		let focused = self.active.pid();
+		if focused == 0 {
+			return Vec::new();
 		}
-		self.pw.app_pid_state(pid).map(|(n, v, m)| (pid, n, v, m))
+
+		let Some(app) = FocusedApp::from_pid(focused) else {
+			return vec![focused];
+		};
+
+		let mut related: Vec<u32> = app.related_pids().filter(|&pid| pid != focused).collect();
+		related.sort_unstable();
+
+		let mut pids = Vec::with_capacity(related.len() + 1);
+		pids.push(focused);
+		pids.extend(related);
+
+		pids
+	}
+
+	fn state(&self) -> Option<(u32, String, f32, bool)> {
+		let pids = self.focused_pids();
+		self.pw.app_pids_state(&pids)
 	}
 
 	async fn adjust(
@@ -115,20 +126,17 @@ impl ActiveAppVolumeAction {
 		s: &ActiveAppVolumeSettings,
 		d: f32,
 	) -> OpenActionResult<()> {
-		let pid = self.active.pid();
-		if pid == 0 {
+		let pids = self.focused_pids();
+		if pids.is_empty() {
 			return self.render(i, s).await;
 		}
 
-		// Do not gate the command on the cached process_apps state. The cache is
-		// only a UI snapshot and can briefly lag behind PipeWire discovery (in
-		// particular when a Wine/Proton process starts). The backend already has
-		// the authoritative live NodeRefs and matches the PID directly.
-		if let Some((_pid, name, cur, mute)) = self.state() {
+		if let Some((_matched_pid, name, cur, mute)) = self.pw.app_pids_state(&pids) {
 			if mute {
-				self.pw.send(Command::SetAppPidMute(pid, Some(false)));
+				self.pw
+					.send(Command::SetAppPidsMute(pids.clone(), Some(false)));
 			}
-			self.pw.send(Command::AdjustAppPidVolume(pid, d));
+			self.pw.send(Command::AdjustAppPidsVolume(pids, d));
 			return crate::display::app(
 				i,
 				Some(&name),
@@ -139,26 +147,25 @@ impl ActiveAppVolumeAction {
 			.await;
 		}
 
-		self.pw.send(Command::AdjustAppPidVolume(pid, d));
+		self.pw.send(Command::AdjustAppPidsVolume(pids, d));
 		self.render(i, s).await
 	}
 
 	async fn toggle_mute(&self, i: &Instance, s: &ActiveAppVolumeSettings) -> OpenActionResult<()> {
-		let pid = self.active.pid();
-		if pid == 0 {
+		let pids = self.focused_pids();
+		if pids.is_empty() {
 			return self.render(i, s).await;
 		}
 
-		// As with volume adjustment, always send the PID command. The cached
-		// process state is not a prerequisite for controlling the live stream.
-		if let Some((_pid, name, vol, mute)) = self.state() {
-			self.pw.send(Command::SetAppPidMute(pid, None));
+		if let Some((_matched_pid, name, vol, mute)) = self.pw.app_pids_state(&pids) {
+			self.pw.send(Command::SetAppPidsMute(pids, None));
 			return crate::display::app(i, Some(&name), vol, !mute, &s.colors).await;
 		}
 
-		self.pw.send(Command::SetAppPidMute(pid, None));
+		self.pw.send(Command::SetAppPidsMute(pids, None));
 		self.render(i, s).await
 	}
+
 	async fn render(&self, i: &Instance, s: &ActiveAppVolumeSettings) -> OpenActionResult<()> {
 		match self.state() {
 			Some((_p, n, v, m)) => crate::display::app(i, Some(&n), v, m, &s.colors).await,
