@@ -1,30 +1,65 @@
-# CooldeadPipeWire
+# CD-Active App Volume for KDE
 
-CooldeadPipeWire is a Linux PipeWire audio plugin for OpenDeck.
+CD-Active App Volume for KDE is a Linux PipeWire audio plugin for OpenDeck designed to control the audio volume of the currently focused game.
 
-It is based on [OpenDeck PipeWire](https://github.com/sjourdois/opendeck-pipewire) by sjourdois, with additional features and fixes focused on per-application game audio control and KDE Plasma Wayland integration.
+It is based on [OpenDeck PipeWire](https://github.com/sjourdois/opendeck-pipewire) by sjourdois, with the CD-Active App Volume functionality focused on per-game audio control and KDE Plasma Wayland integration.
 
-## What CooldeadPipeWire adds
+## CD-Active App Volume
 
-CooldeadPipeWire retains the original plugin's PipeWire functionality while adding the following changes.
+CD-Active App Volume provides a single OpenDeck action for controlling the audio of the currently focused game.
 
-### Active Application Volume
+The action uses the PID of the focused KDE/Wayland window to identify the corresponding PipeWire audio stream. The game does not need to be manually selected.
 
-Added a new **Active Application Volume** action.
+### Encoder controls
 
-The action controls the volume of the application belonging to the currently focused window.
+When used with an encoder:
 
-The primary use case for this feature is controlling games, including games running through Proton/Wine.
+- **Rotate:** Adjusts the focused game's volume.
+- **Press:** Performs the configured press action.
 
-> **Current limitation:** Active Application Volume is currently intended primarily for games. Compatibility with general desktop applications such as web browsers or Discord is not guaranteed.
+The press action can be configured to:
 
-The action also supports application mute.
+- **Volume up**
+- **Volume down**
+- **Toggle mute**
 
-### KDE Plasma Wayland active-window integration
+The volume adjustment step can be configured from **1% to 20%**.
 
-Added a KDE KWin script that reports the PID of the currently focused window to CooldeadPipeWire.
+### Custom encoder display
 
-This is used by the Active Application Volume action to determine which PipeWire application stream should be controlled.
+CD-Active App Volume does not use the standard OpenDeck volume bar.
+
+Instead, the encoder displays a custom half-circle volume gauge with the focused game's title above it and the current volume percentage below it.
+
+The gauge uses the following ranges:
+
+| Volume | Gauge |
+|---|---|
+| 0–40% | Red |
+| 40–80% | Yellow |
+| 80–110% | Green |
+| 110–130% | Yellow |
+| 130–150% | Red |
+
+The display allows volume levels above 100% to be shown when PipeWire permits the application stream to be amplified.
+
+When no usable focused game/audio stream is found, the display shows **No Focused App** and the gauge is grey.
+
+When the focused game is muted, the gauge becomes grey and **MUTED** is displayed.
+
+The muted-state text uses the configurable **Muted color** setting from the Property Inspector.
+
+### Current limitation
+
+The current implementation is focused on games.
+
+It is designed to control the audio stream associated with the currently focused game window under KDE Plasma Wayland. General desktop applications such as web browsers or Discord are not currently the target of this plugin and compatibility with them is not guaranteed.
+
+## KDE Plasma Wayland integration
+
+CD-Active App Volume for KDE uses a KDE KWin script to report the PID of the currently focused window to the plugin.
+
+The plugin uses that PID to determine which PipeWire application stream should be controlled.
 
 The integration uses a dedicated D-Bus interface:
 
@@ -34,58 +69,33 @@ org.cooldeadpipewire.PipeWire.ActiveWindow
 
 This feature is specifically intended for KDE Plasma Wayland.
 
-### Proton / Wine game support
+## Proton / Wine game support
 
-Active Application Volume works with games running through Wine/Proton when their audio streams are exposed through PipeWire.
+CD-Active App Volume works with games running through Wine/Proton when their audio streams are exposed through PipeWire.
 
-The implementation matches the focused application's process ID against PipeWire application streams rather than relying solely on the displayed application name.
+For Proton/Wine games, the process shown by PipeWire may be different from the executable visible in the game launcher.
 
-This allows Windows games running through Proton/Wine to be controlled from the Stream Deck.
-
-### Output Device icon reliability
-
-Fixed an issue with the Output Device action's custom icon picker.
-
-The original implementation created the file input dynamically without attaching it to the document before opening the file picker. On some systems this caused the file selection callback to fail intermittently.
-
-CooldeadPipeWire attaches the file input to the document before opening the picker, making custom output-device icons reliably selectable.
-
-### Output Device icon persistence
-
-Fixed custom output-device icons being lost when Output Device settings were subsequently saved or when switching between devices.
-
-Custom icons are now included when the action's settings are saved.
-
-### CooldeadPipeWire branding
-
-The fork has its own plugin identity and namespace so it can coexist with the original OpenDeck PipeWire plugin.
-
-The plugin uses:
+For example, a game may appear as:
 
 ```text
-com.cooldeadpipewire.sdPlugin
+application.name = "Schedule I.exe"
+application.process.binary = "wine64-preloader"
 ```
 
-and actions use the:
+CD-Active App Volume uses the process relationship rather than requiring the PipeWire application name to exactly match the focused window title.
 
-```text
-com.cooldeadpipewire.pipewire.*
-```
-
-namespace.
-
----
+This allows supported Windows games running through Proton/Wine to be controlled based on the currently focused game window.
 
 ## Installation
 
 ### Requirements
 
-CooldeadPipeWire currently targets Linux systems using:
+CD-Active App Volume for KDE currently targets Linux systems using:
 
 - PipeWire
 - WirePlumber
 - OpenDeck 7.x
-- KDE Plasma Wayland for Active Application Volume
+- KDE Plasma Wayland
 
 For KDE Plasma Wayland, `qdbus6` is also required for installing the active-window bridge.
 
@@ -116,7 +126,7 @@ Install it into OpenDeck:
 
 ```bash
 rm -rf ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
-cp -r dist ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
+cp -r dist/. ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
 ```
 
 ### Install the KDE active-window bridge
@@ -129,47 +139,19 @@ For KDE Plasma Wayland:
 
 The installer:
 
-1. Installs the CooldeadPipeWire KWin script.
+1. Installs the CD-Active App Volume for KDE KWin script.
 2. Enables the script in KDE.
 3. Reloads KWin so the bridge becomes active immediately.
 
 The bridge is registered as a KDE KWin script and should automatically load when KDE starts. It does not need to be reinstalled after every reboot.
 
-Restart OpenDeck after installation.
+### Restart OpenDeck
 
-The CooldeadPipeWire actions should now appear in OpenDeck.
+**Restart OpenDeck after installing the plugin.**
 
----
+OpenDeck needs to be restarted so that it loads the newly installed plugin.
 
-## Active Application Volume
-
-Add the **Active Application Volume** action to a Stream Deck key or encoder.
-
-When the action is active:
-
-1. CooldeadPipeWire receives the PID of the currently focused KDE window.
-2. The plugin looks for PipeWire audio streams belonging to that PID.
-3. Turning the encoder adjusts the application's PipeWire volume.
-4. Pressing the encoder can mute/unmute the application.
-
-The application does not need to be manually selected.
-
-### Proton and Wine games
-
-For Proton/Wine games, the process shown by PipeWire may be different from the executable visible in the game launcher.
-
-For example, a game may appear as:
-
-```text
-application.name = "Schedule I.exe"
-application.process.binary = "wine64-preloader"
-```
-
-CooldeadPipeWire uses the process relationship rather than requiring the PipeWire application name to exactly match the focused window title.
-
-This allows the encoder to control the audio of supported Proton/Wine games based on the currently focused game window.
-
----
+The CD-Active App Volume action should then appear in OpenDeck.
 
 ## Updating
 
@@ -184,10 +166,10 @@ Then rebuild and reinstall:
 ```bash
 deno run -A build.ts dist x86_64-unknown-linux-gnu
 rm -rf ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
-cp -r dist ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
+cp -r dist/. ~/.config/opendeck/plugins/com.cooldeadpipewire.sdPlugin
 ```
 
-Restart OpenDeck after updating.
+**Restart OpenDeck after updating** so that it loads the new plugin build.
 
 The KDE active-window bridge normally does not need to be reinstalled unless its script has changed.
 
@@ -196,8 +178,6 @@ If the KWin bridge itself is updated, run:
 ```bash
 ./install-cooldeadpipewire-active-window.sh
 ```
-
----
 
 ## Uninstalling
 
@@ -221,23 +201,21 @@ kwriteconfig6 --file ~/.config/kwinrc --group Plugins --key cooldeadpipewire-act
 
 Restart KDE if necessary.
 
----
-
 ## AI-assisted development disclosure
 
 This fork contains code and documentation developed with assistance from OpenAI's ChatGPT.
 
 AI assistance was used for portions of the development process, including code changes, debugging, troubleshooting, documentation, and development guidance.
 
-The project maintainer reviewed, tested, and integrated the resulting changes. In particular, the Active Application Volume functionality, KDE active-window integration, PipeWire process matching, and Output Device icon fixes were tested in the author's Linux/KDE environment.
+The project maintainer reviewed, tested, and integrated the resulting changes. In particular, the CD-Active App Volume functionality, KDE active-window integration, PipeWire process matching, and custom encoder display were tested in the author's Linux/KDE environment.
 
 AI assistance does not imply that the original OpenDeck PipeWire project's author or contributors were involved in, reviewed, or endorsed these changes.
 
-CooldeadPipeWire is an independent fork of the original project.
+CD-Active App Volume for KDE is an independent fork of the original project.
 
 ## Credits
 
-CooldeadPipeWire is based on:
+CD-Active App Volume for KDE is based on:
 
 **OpenDeck PipeWire**  
 https://github.com/sjourdois/opendeck-pipewire

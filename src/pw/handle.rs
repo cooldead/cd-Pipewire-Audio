@@ -1,4 +1,4 @@
-//! PipeWire handle used by Active Application Volume.
+//! PipeWire handle used by CD-Active App Volume.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,7 +10,7 @@ use crate::command::Command;
 use super::Channels;
 use super::backend::run_loop;
 
-/// Cheap, cloneable handle used by Active Application Volume.
+/// Cheap, cloneable handle used by CD-Active App Volume.
 #[derive(Clone)]
 pub struct PwHandle {
 	tx: Arc<Mutex<pipewire::channel::Sender<Command>>>,

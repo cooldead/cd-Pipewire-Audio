@@ -1,4 +1,4 @@
-//! Intents sent by Active Application Volume to the PipeWire backend.
+//! Intents sent by CD-Active App Volume to the PipeWire backend.
 
 #[derive(Debug)]
 pub enum Command {

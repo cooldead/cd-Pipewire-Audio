@@ -1,5 +1,5 @@
 {
-    "Name": "CooldeadPipeWire",
+    "Name": "CD-Active App Volume for KDE",
     "Description": "Native (Rust) PipeWire/WirePlumber audio control for OpenDeck. No Node.js.",
     "Author": "Stephane Jourdois",
     "Version": "0.5.0",
@@ -9,7 +9,7 @@
     },
     "CodePathLin": "x86_64-unknown-linux-gnu/bin/cooldeadpipewire",
     "Icon": "icons/plugin",
-    "Category": "CooldeadPipeWire",
+    "Category": "CD-Active App Volume for KDE",
     "OS": [
         {
             "Platform": "linux"
@@ -18,7 +18,7 @@
     "Actions": [
         {
             "Icon": "icons/appVolume",
-            "Name": "Active Application Volume",
+            "Name": "CD-Active App Volume",
             "States": [
                 {
                     "Image": "icons/appVolume"
@@ -31,7 +31,7 @@
             "SupportedInMultiActions": true,
             "Tooltip": "Adjust the audio volume of the currently focused application",
             "Encoder": {
-                "layout": "$B1",
+                "layout": "layouts/active-app-volume.json",
                 "TriggerDescription": {
                     "Rotate": "Adjust active application volume",
                     "Push": "Toggle mute",

@@ -7,8 +7,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Level-bar colour when active (unmuted).
-pub const ACTIVE: &str = "#3db36b";
 /// Level-bar / value colour when muted.
 pub const MUTE: &str = "#ff3b30";
 
@@ -22,19 +20,9 @@ pub struct BarColors {
 }
 
 impl BarColors {
-	/// The unmuted bar colour, validated (falls back to [`ACTIVE`]).
-	pub fn active(&self) -> &str {
-		pick(&self.unmute_color, ACTIVE)
-	}
-
-	/// The muted bar / slash colour, validated (falls back to [`MUTE`]).
+	/// The muted colour, validated (falls back to `MUTE`).
 	pub fn mute(&self) -> &str {
 		pick(&self.mute_color, MUTE)
-	}
-
-	/// The bar colour for the current mute state.
-	pub fn bar(&self, muted: bool) -> &str {
-		if muted { self.mute() } else { self.active() }
 	}
 }
 

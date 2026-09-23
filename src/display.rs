@@ -1,6 +1,6 @@
-//! Surface updates for Active Application Volume.
-
+//! Surface updates for CD-Active App Volume.
 use openaction::*;
+use serde_json::json;
 
 use crate::color::BarColors;
 use crate::render;
@@ -22,13 +22,19 @@ async fn bar(
 ) -> OpenActionResult<()> {
 	if is_encoder(instance) {
 		instance
-			.set_feedback(&render::bar_feedback(
-				title,
-				known,
-				volume_cubic,
-				muted,
-				colors,
-			))
+			.set_feedback_layout("layouts/active-app-volume.json".to_string())
+			.await?;
+
+		instance
+			.set_feedback(&json!({
+				"full-canvas": render::label_bar_key(
+					title,
+					known,
+					volume_cubic,
+					muted,
+					colors,
+				)
+			}))
 			.await
 	} else if !known {
 		instance.set_title(Some("—"), None).await
@@ -37,7 +43,7 @@ async fn bar(
 	}
 }
 
-/// Active Application Volume surface.
+/// CD-Active App Volume surface.
 pub async fn app(
 	instance: &Instance,
 	app: Option<&str>,
@@ -45,9 +51,9 @@ pub async fn app(
 	muted: bool,
 	colors: &BarColors,
 ) -> OpenActionResult<()> {
-	let label = app.unwrap_or("App");
+	let label = app.unwrap_or("No Focused App");
 	bar(instance, label, app.is_some(), vol, muted, colors, || {
-		render::label_bar_key(label, vol, muted, colors)
+		render::label_bar_key(label, app.is_some(), vol, muted, colors)
 	})
 	.await
 }

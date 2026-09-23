@@ -1,4 +1,4 @@
-//! Live key re-rendering for Active Application Volume.
+//! Live key re-rendering for CD-Active App Volume.
 //!
 //! The active application's display follows the focused KDE/KWin window PID
 //! and the corresponding PipeWire stream state.
@@ -12,7 +12,7 @@ use crate::active_window::ActiveWindowHandle;
 use crate::color::BarColors;
 use crate::pw::PwHandle;
 
-/// Shared, cheaply-cloneable store of per-instance Active Application Volume
+/// Shared, cheaply-cloneable store of per-instance CD-Active App Volume
 /// settings needed for background redraws.
 #[derive(Clone, Default)]
 pub struct Refresher {
@@ -32,7 +32,7 @@ impl Refresher {
 	}
 }
 
-/// Redraw every visible Active Application Volume instance from live state.
+/// Redraw every visible CD-Active App Volume instance from live state.
 pub async fn refresh_all(pw: &PwHandle, refresher: &Refresher, active: &ActiveWindowHandle) {
 	use crate::display;
 
