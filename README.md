@@ -4,6 +4,12 @@ CD-Active App Volume for KDE is a Linux PipeWire audio plugin for OpenDeck that 
 
 It is based on [OpenDeck PipeWire](https://github.com/sjourdois/opendeck-pipewire) by sjourdois, with CD-Active App Volume focused on automatic per-application audio control and KDE Plasma Wayland integration.
 
+> [!IMPORTANT]
+> ## KDE ACTIVE-WINDOW BRIDGE REQUIRED
+> Installing the OpenDeck plugin ZIP **is not enough by itself**. You must also install the **KDE active-window bridge** or CD-Active App Volume cannot determine which application is currently focused.
+>
+> After installing the plugin ZIP through OpenDeck, follow the **Install the KDE active-window bridge** section below.
+
 ## CD-Active App Volume
 
 CD-Active App Volume provides a single OpenDeck action for controlling the audio of the currently focused application. There is no need to manually select an application before adjusting its volume.
@@ -73,7 +79,8 @@ org.cooldeadpipewire.PipeWire.ActiveWindow
 
 This feature is specifically intended for KDE Plasma Wayland.
 
-> **Important:** Installing the OpenDeck plugin ZIP does **not** install the KDE active-window bridge. The bridge must be installed separately before Active Application Volume can follow the focused window.
+> [!IMPORTANT]
+> **The KDE active-window bridge is required.** Installing the OpenDeck plugin ZIP does **not** install the bridge. Install it separately using the instructions below before using Active Application Volume.
 
 ## Proton / Wine game support
 
@@ -104,11 +111,13 @@ For KDE Plasma Wayland, `qdbus6` is also required for installing/reloading the a
 2. Open **OpenDeck**.
 3. Use OpenDeck's plugin installation/import option to install the downloaded `.sdPlugin.zip` file.
 4. Restart OpenDeck if it does not reload the plugin automatically.
-5. Install the **KDE active-window bridge separately** using the instructions below. The ZIP installs the OpenDeck plugin, but Active Application Volume still requires the bridge to know which KDE window is focused.
+5. **REQUIRED: Install the KDE active-window bridge using the instructions immediately below.** The ZIP only installs the OpenDeck plugin; without the bridge, Active Application Volume cannot know which KDE window is focused.
 
 After both components are installed, add the **CD-Active App Volume** action to an encoder in OpenDeck.
 
-### Install the KDE active-window bridge
+> [!IMPORTANT]
+> ## REQUIRED: Install the KDE active-window bridge
+> **Do not skip this step.** The active-window bridge is required even when you install the plugin using the release ZIP.
 
 The active-window bridge is part of this repository, not the OpenDeck ZIP installation. Clone or download the repository, then run the installer from the repository directory:
 
