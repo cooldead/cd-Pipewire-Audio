@@ -4,12 +4,13 @@
 //! and the corresponding PipeWire stream state.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use openaction::*;
 
 use crate::active_window::ActiveWindowHandle;
-use crate::app_match::FocusedApp;
+use crate::app_match::focused_pids;
 use crate::color::BarColors;
 use crate::pw::PwHandle;
 
@@ -17,77 +18,73 @@ use crate::pw::PwHandle;
 /// settings needed for background redraws.
 #[derive(Clone, Default)]
 pub struct Refresher {
-	active_colors: Arc<Mutex<HashMap<String, BarColors>>>,
+	appearances: Arc<Mutex<HashMap<String, Appearance>>>,
+}
+
+#[derive(Default)]
+struct Appearance {
+	colors: BarColors,
+	style: crate::display::BarStyle,
+	applied_style: Option<crate::display::BarStyle>,
 }
 
 impl Refresher {
-	pub fn set_active_colors(&self, instance_id: &str, colors: &BarColors) {
-		self.active_colors
-			.lock()
-			.unwrap()
-			.insert(instance_id.to_owned(), colors.clone());
+	pub async fn set_appearance(
+		&self,
+		id: &str,
+		colors: &BarColors,
+		style: crate::display::BarStyle,
+	) {
+		let mut entries = self.appearances.lock().await;
+		let entry = entries.entry(id.to_owned()).or_default();
+		entry.colors = colors.clone();
+		entry.style = style;
 	}
 
-	pub fn forget_active_colors(&self, instance_id: &str) {
-		self.active_colors.lock().unwrap().remove(instance_id);
-	}
-}
-
-/// Build the same focused-process candidate list used by ActiveAppVolumeAction.
-///
-/// The exact KWin PID is always first. Descendants follow so applications such
-/// as Brave/Chromium can resolve their audio-owning child process.
-fn focused_pids(active: &ActiveWindowHandle) -> Vec<u32> {
-	let focused = active.pid();
-
-	if focused == 0 {
-		return Vec::new();
+	pub async fn forget_appearance(&self, id: &str) {
+		self.appearances.lock().await.remove(id);
 	}
 
-	let Some(app) = FocusedApp::from_pid(focused) else {
-		return vec![focused];
-	};
-
-	let mut related: Vec<u32> = app.related_pids().filter(|&pid| pid != focused).collect();
-
-	related.sort_unstable();
-
-	let mut pids = Vec::with_capacity(related.len() + 1);
-	pids.push(focused);
-	pids.extend(related);
-
-	pids
+	pub async fn draw(
+		&self,
+		instance: &Instance,
+		state: Option<&(u32, String, f32, bool)>,
+	) -> OpenActionResult<()> {
+		// Serialize layout and feedback together, using the latest saved appearance.
+		// Background refreshes must not restore an old layout after a style switch.
+		let mut entries = self.appearances.lock().await;
+		let Some(entry) = entries.get_mut(&instance.instance_id) else {
+			return Ok(());
+		};
+		if instance.controller == "Encoder" && entry.applied_style != Some(entry.style) {
+			instance
+				.set_feedback_layout(entry.style.layout().to_owned())
+				.await?;
+			entry.applied_style = Some(entry.style);
+		}
+		let (name, volume, mute) = match state {
+			Some((_, name, volume, mute)) => (Some(name.as_str()), *volume, *mute),
+			None => (None, 0.0, false),
+		};
+		crate::display::app(instance, name, volume, mute, &entry.colors, entry.style).await
+	}
 }
 
 /// Redraw every visible CD-Active App Volume instance from live state.
 pub async fn refresh_all(pw: &PwHandle, refresher: &Refresher, active: &ActiveWindowHandle) {
-	use crate::display;
-
-	let active_colors = refresher.active_colors.lock().unwrap().clone();
-
-	let pids = focused_pids(active);
+	let instances =
+		visible_instances(crate::actions::active_app_volume::ActiveAppVolumeAction::UUID).await;
+	if instances.is_empty() {
+		return;
+	}
+	let pids = focused_pids(active.pid());
 
 	let state = if pids.is_empty() {
 		None
 	} else {
 		pw.app_pids_state(&pids)
 	};
-	for inst in
-		visible_instances(crate::actions::active_app_volume::ActiveAppVolumeAction::UUID).await
-	{
-		let colors = active_colors
-			.get(&inst.instance_id)
-			.cloned()
-			.unwrap_or_default();
-
-		match &state {
-			Some((_pid, name, vol, mute)) => {
-				let _ = display::app(&inst, Some(name), *vol, *mute, &colors).await;
-			}
-
-			None => {
-				let _ = display::app(&inst, None, 0.0, false, &colors).await;
-			}
-		}
+	for inst in instances {
+		let _ = refresher.draw(&inst, state.as_ref()).await;
 	}
 }

@@ -267,10 +267,10 @@ fn on_global(
 							.get("application.process.id")
 							.and_then(|s| s.parse::<u32>().ok());
 
-						if let Some(n) = inner_info.borrow_mut().nodes.get_mut(&id) {
-							if pid.is_some() {
-								n.process_id = pid;
-							}
+						if let Some(n) = inner_info.borrow_mut().nodes.get_mut(&id)
+							&& pid.is_some()
+						{
+							n.process_id = pid;
 						}
 					}
 				})
@@ -319,7 +319,7 @@ fn on_global_remove(inner: &Rc<RefCell<Inner>>, id: u32) {
 	b.refresh_apps();
 }
 fn on_command(inner: &Rc<RefCell<Inner>>, cmd: Command) {
-	log::info!("command {cmd:?}");
+	log::debug!("command {cmd:?}");
 
 	match cmd {
 		Command::AdjustAppPidsVolume(pids, delta) => {

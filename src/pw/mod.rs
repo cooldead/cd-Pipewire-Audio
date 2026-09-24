@@ -10,13 +10,8 @@
 //! the user-facing 0–100% maps to PipeWire's linear `channelVolumes` via
 //! `linear = cubic³`.
 //!
-//! Hardware vs software volume: sinks backed by a sound card with a hardware
-//! mixer (e.g. USB headsets) ignore node-level `channelVolumes` — WirePlumber
-//! resets them. For those we set the volume on the owning `Device`'s active
-//! `Route` instead (the `pod` submodule); plain software sinks use node Props.
-//!
-//! Submodules: `types` (published data), `handle` (the action-facing API),
-//! `backend` (the loop thread), `pod` (SPA POD writes).
+//! Submodules: `handle` (the action-facing API), `backend` (the loop thread),
+//! and `pod` (SPA node property writes).
 
 mod backend;
 mod handle;
@@ -27,9 +22,12 @@ use std::sync::{Arc, Mutex};
 
 pub use handle::{PwHandle, start};
 
+/// Application name, cubic volume, and mute state indexed by process ID.
+type ProcessApps = Arc<Mutex<HashMap<u32, (String, f32, bool)>>>;
+
 /// Shared state published from the PipeWire thread to the actions. Bundled into a
 /// struct to keep `run_loop`/`Inner` signatures small as the surface grows.
 struct Channels {
-	process_apps: Arc<Mutex<HashMap<u32, (String, f32, bool)>>>,
+	process_apps: ProcessApps,
 	notify: Arc<tokio::sync::watch::Sender<u64>>,
 }

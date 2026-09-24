@@ -69,6 +69,11 @@ async fn main() -> OpenActionResult<()> {
 					result = changes.changed() => if result.is_err() { break; },
 					result = active_changes.changed() => if result.is_err() { break; },
 				}
+				// Coalesce rapid updates into one frame without waiting for the
+				// dial to stop. Read the latest state on the next refresh.
+				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+				changes.borrow_and_update();
+				active_changes.borrow_and_update();
 			}
 		});
 	}

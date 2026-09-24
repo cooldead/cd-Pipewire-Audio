@@ -13,6 +13,12 @@ pub const MUTE: &str = "#ff3b30";
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(default)]
 pub struct BarColors {
+	pub gauge_low_color: Option<String>,
+	pub gauge_lower_mid_color: Option<String>,
+	pub gauge_normal_color: Option<String>,
+	pub gauge_boost_color: Option<String>,
+	pub gauge_high_color: Option<String>,
+
 	/// Optional level-bar colour when unmuted.
 	pub unmute_color: Option<String>,
 	/// Level-bar (and keypad mute-slash) colour when muted (default red, [`MUTE`]).
@@ -20,6 +26,26 @@ pub struct BarColors {
 }
 
 impl BarColors {
+	pub fn gauge_low_color(&self) -> &str {
+		pick(&self.gauge_low_color, "#ff2020")
+	}
+	pub fn gauge_lower_mid_color(&self) -> &str {
+		pick(&self.gauge_lower_mid_color, "#ffd21f")
+	}
+	pub fn gauge_normal_color(&self) -> &str {
+		pick(&self.gauge_normal_color, "#20e83f")
+	}
+	pub fn gauge_boost_color(&self) -> &str {
+		pick(&self.gauge_boost_color, "#ffd21f")
+	}
+	pub fn gauge_high_color(&self) -> &str {
+		pick(&self.gauge_high_color, "#ff2020")
+	}
+
+	pub fn active(&self) -> &str {
+		pick(&self.unmute_color, "#3db36b")
+	}
+
 	/// The muted colour, validated (falls back to `MUTE`).
 	pub fn mute(&self) -> &str {
 		pick(&self.mute_color, MUTE)

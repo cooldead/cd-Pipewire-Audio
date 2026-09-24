@@ -2,9 +2,10 @@
     "Name": "CD-Active App Volume for KDE",
     "Description": "Native PipeWire audio control for OpenDeck on KDE, with active application volume control for native Linux apps, Chromium-based apps, Wine, and Proton games.",
     "Author": "Anthony Pena",
-    "Version": "0.0.4",
+    "Version": "0.0.8",
     "CodePaths": {
-        "x86_64-unknown-linux-gnu": "x86_64-unknown-linux-gnu/bin/cd-active-app-volume"
+        "x86_64-unknown-linux-gnu": "x86_64-unknown-linux-gnu/bin/cd-active-app-volume",
+        "aarch64-unknown-linux-gnu": "aarch64-unknown-linux-gnu/bin/cd-active-app-volume"
     },
     "CodePathLin": "x86_64-unknown-linux-gnu/bin/cd-active-app-volume",
     "Icon": "icons/plugin",

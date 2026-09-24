@@ -1,6 +1,6 @@
-//! Building and sending SPA Props / Route PODs — the low-level hardware writes.
+//! Building and sending SPA Props PODs for application audio streams.
 //!
-//! Both helpers take an already-linear volume (`linear = cubic³`, see the parent
+//! The helper takes an already-linear volume (`linear = cubic³`, see the parent
 //! module) and a mute flag; either may be `None` to leave that attribute alone.
 
 /// Build and send a Props POD setting channelVolumes and/or mute on a node.

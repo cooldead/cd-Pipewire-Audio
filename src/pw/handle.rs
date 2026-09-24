@@ -7,14 +7,14 @@ use anyhow::Result;
 
 use crate::command::Command;
 
-use super::Channels;
 use super::backend::run_loop;
+use super::{Channels, ProcessApps};
 
 /// Cheap, cloneable handle used by CD-Active App Volume.
 #[derive(Clone)]
 pub struct PwHandle {
 	tx: Arc<Mutex<pipewire::channel::Sender<Command>>>,
-	process_apps: Arc<Mutex<HashMap<u32, (String, f32, bool)>>>,
+	process_apps: ProcessApps,
 	notify: Arc<tokio::sync::watch::Sender<u64>>,
 }
 

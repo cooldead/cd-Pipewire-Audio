@@ -1,5 +1,5 @@
 use crate::active_window::ActiveWindowHandle;
-use crate::app_match::FocusedApp;
+use crate::app_match::focused_pids;
 use crate::color::BarColors;
 use crate::command::Command;
 use crate::pw::PwHandle;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct ActiveAppVolumeSettings {
 	pub step: u8,
+	pub bar_style: crate::display::BarStyle,
 	pub mode: super::KeyMode,
 	#[serde(flatten)]
 	pub colors: BarColors,
@@ -19,6 +20,7 @@ impl Default for ActiveAppVolumeSettings {
 	fn default() -> Self {
 		Self {
 			step: 5,
+			bar_style: crate::display::BarStyle::default(),
 			mode: super::KeyMode::Up,
 			colors: BarColors::default(),
 		}
@@ -52,7 +54,7 @@ impl Action for ActiveAppVolumeAction {
 		t: i16,
 		pressed: bool,
 	) -> OpenActionResult<()> {
-		log::info!(
+		log::debug!(
 			"ActiveAppVolume: dial_rotate instance={} ticks={} pressed={} pid={}",
 			i.instance_id,
 			t,
@@ -78,45 +80,28 @@ impl Action for ActiveAppVolumeAction {
 	}
 
 	async fn will_appear(&self, i: &Instance, s: &Self::Settings) -> OpenActionResult<()> {
-		self.refresher.set_active_colors(&i.instance_id, &s.colors);
+		self.refresher
+			.set_appearance(&i.instance_id, &s.colors, s.bar_style)
+			.await;
 		self.render(i, s).await
 	}
 
 	async fn will_disappear(&self, i: &Instance, _s: &Self::Settings) -> OpenActionResult<()> {
-		self.refresher.forget_active_colors(&i.instance_id);
+		self.refresher.forget_appearance(&i.instance_id).await;
 		Ok(())
 	}
 
 	async fn did_receive_settings(&self, i: &Instance, s: &Self::Settings) -> OpenActionResult<()> {
-		self.refresher.set_active_colors(&i.instance_id, &s.colors);
+		self.refresher
+			.set_appearance(&i.instance_id, &s.colors, s.bar_style)
+			.await;
 		self.render(i, s).await
 	}
 }
 
 impl ActiveAppVolumeAction {
-	/// Exact focused PID first, followed by descendants.
-	fn focused_pids(&self) -> Vec<u32> {
-		let focused = self.active.pid();
-		if focused == 0 {
-			return Vec::new();
-		}
-
-		let Some(app) = FocusedApp::from_pid(focused) else {
-			return vec![focused];
-		};
-
-		let mut related: Vec<u32> = app.related_pids().filter(|&pid| pid != focused).collect();
-		related.sort_unstable();
-
-		let mut pids = Vec::with_capacity(related.len() + 1);
-		pids.push(focused);
-		pids.extend(related);
-
-		pids
-	}
-
 	fn state(&self) -> Option<(u32, String, f32, bool)> {
-		let pids = self.focused_pids();
+		let pids = focused_pids(self.active.pid());
 		self.pw.app_pids_state(&pids)
 	}
 
@@ -126,50 +111,56 @@ impl ActiveAppVolumeAction {
 		s: &ActiveAppVolumeSettings,
 		d: f32,
 	) -> OpenActionResult<()> {
-		let pids = self.focused_pids();
+		let pids = focused_pids(self.active.pid());
 		if pids.is_empty() {
 			return self.render(i, s).await;
 		}
 
-		if let Some((_matched_pid, name, cur, mute)) = self.pw.app_pids_state(&pids) {
-			if mute {
-				self.pw
-					.send(Command::SetAppPidsMute(pids.clone(), Some(false)));
-			}
-			self.pw.send(Command::AdjustAppPidsVolume(pids, d));
-			return crate::display::app(
-				i,
-				Some(&name),
-				(cur + d).clamp(0.0, 1.5),
-				false,
-				&s.colors,
-			)
-			.await;
+		if let Some((_, _, _, true)) = self.pw.app_pids_state(&pids) {
+			self.pw
+				.send(Command::SetAppPidsMute(pids.clone(), Some(false)));
 		}
 
 		self.pw.send(Command::AdjustAppPidsVolume(pids, d));
-		self.render(i, s).await
+		// PipeWire's notification triggers the redraw. An optimistic frame here
+		// can race with that refresh and overwrite it with an older value.
+		Ok(())
 	}
 
 	async fn toggle_mute(&self, i: &Instance, s: &ActiveAppVolumeSettings) -> OpenActionResult<()> {
-		let pids = self.focused_pids();
+		let pids = focused_pids(self.active.pid());
 		if pids.is_empty() {
 			return self.render(i, s).await;
 		}
 
-		if let Some((_matched_pid, name, vol, mute)) = self.pw.app_pids_state(&pids) {
-			self.pw.send(Command::SetAppPidsMute(pids, None));
-			return crate::display::app(i, Some(&name), vol, !mute, &s.colors).await;
-		}
-
 		self.pw.send(Command::SetAppPidsMute(pids, None));
-		self.render(i, s).await
+		Ok(())
 	}
 
-	async fn render(&self, i: &Instance, s: &ActiveAppVolumeSettings) -> OpenActionResult<()> {
-		match self.state() {
-			Some((_p, n, v, m)) => crate::display::app(i, Some(&n), v, m, &s.colors).await,
-			None => crate::display::app(i, None, 0.0, false, &s.colors).await,
-		}
+	async fn render(&self, i: &Instance, _s: &ActiveAppVolumeSettings) -> OpenActionResult<()> {
+		self.refresher.draw(i, self.state().as_ref()).await
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::display::BarStyle;
+
+	#[test]
+	fn existing_settings_keep_gauge_and_original_style_round_trips() {
+		let old: ActiveAppVolumeSettings =
+			serde_json::from_str(r#"{"step":7,"mode":"down"}"#).unwrap();
+		assert_eq!(old.bar_style, BarStyle::Gauge);
+		let original: ActiveAppVolumeSettings =
+			serde_json::from_str(r##"{"bar_style":"original","mute_color":"#123456"}"##).unwrap();
+		assert_eq!(original.bar_style, BarStyle::Original);
+		assert_eq!(original.step, 5);
+		let saved = serde_json::to_value(&original).unwrap();
+		assert_eq!(saved["bar_style"], "original");
+		assert_eq!(saved["mute_color"], "#123456");
+		let unknown: ActiveAppVolumeSettings =
+			serde_json::from_str(r#"{"bar_style":"future"}"#).unwrap();
+		assert_eq!(unknown.bar_style, BarStyle::Gauge);
 	}
 }

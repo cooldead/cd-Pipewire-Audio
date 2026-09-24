@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.8
+
+- Fixed touchstrip flicker during rapid volume adjustments.
+- Added a per-knob choice of gauge or original horizontal volume bar.
+- Added color pickers for all five gauge sections and the horizontal bar.
+- Made the gauge indicator red with a dark outline; boost marks and color boundaries are at 115% and 135%.
+- Consolidated process matching, reduced repeated process-tree work and dial logging, and skipped scans when no controls are visible.
+- Added process-matching tests, enabled tests in CI, and resolved strict lint warnings.
+- Corrected release packaging for this fork, including both touchstrip layouts.
+
 ## 0.4.0
 
 - Added **Active Application Volume** for KDE Plasma/Wayland.

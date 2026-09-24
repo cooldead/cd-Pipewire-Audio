@@ -249,3 +249,14 @@ https://github.com/sjourdois/opendeck-pipewire
 Original project by **sjourdois**.
 
 Please refer to the original project for its license and upstream history.
+
+## Volume knob appearance
+
+Select your CD-Active App Volume knob in OpenDeck and use **Bar style** in its settings:
+
+- **Gauge** keeps the existing semicircular display (the default).
+- **Original horizontal bar** uses the upstream opendeck-pipewire layout, with an app label, dial icon, percentage, and horizontal bar. Its bar fills at 100% while the number can show up to 150%; muted audio shows “muted” and unavailable audio shows “n/a”.
+
+The original style supports **Bar color** and **Muted color**. Each knob remembers its own style. Changing styles takes effect immediately; keypad appearance is unchanged.
+
+Gauge section colors can be customized independently for 0–40%, 40–79%, 79–115%, 115–135%, and 135–150%. The marks above 100% are at 115% and 135%.

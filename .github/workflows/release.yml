@@ -14,7 +14,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  PLUGIN: fr.jourdois.pipewire.sdPlugin
+  PLUGIN: com.cooldeadpipewire.sdPlugin
 
 jobs:
   build:
@@ -47,13 +47,13 @@ jobs:
       # Each architecture is built natively on its own runner, so the bindgen-based
       # pipewire-sys crate finds the right system headers — no cross-compilation.
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Stage binary
         run: |
           mkdir -p stage/${{ matrix.target }}/bin
-          cp target/${{ matrix.target }}/release/opendeck-pipewire \
-             stage/${{ matrix.target }}/bin/opendeck-pipewire
+          cp target/${{ matrix.target }}/release/cd-active-app-volume \
+             stage/${{ matrix.target }}/bin/cd-active-app-volume
 
       - uses: actions/upload-artifact@v7
         with:
@@ -76,9 +76,9 @@ jobs:
       - name: Assemble .sdPlugin bundle
         run: |
           mkdir -p "$PLUGIN"
-          cp -r assets/manifest.json assets/icons assets/propertyInspector "$PLUGIN/"
+          cp -r assets/. "$PLUGIN/"
           cp -r bins/* "$PLUGIN/"
-          chmod 755 "$PLUGIN"/*/bin/opendeck-pipewire
+          chmod 755 "$PLUGIN"/*/bin/cd-active-app-volume
           zip -r "$PLUGIN.zip" "$PLUGIN"
           echo "Bundle contents:" && find "$PLUGIN" -type f | sort
 

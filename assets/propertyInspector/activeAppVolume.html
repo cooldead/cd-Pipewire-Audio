@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"/><script>
-let update=()=>{};let syncStep=()=>{};
+let update=()=>{};let syncStep=()=>{};let syncStyle=()=>{};
 function connectElgatoStreamDeckSocket(inPort,inPropertyInspectorUUID,inRegisterEvent,inInfo,inActionInfo){
- const websocket=new WebSocket("ws://localhost:"+inPort); inActionInfo=JSON.parse(inActionInfo); const context=inActionInfo.context; const settings=inActionInfo.payload.settings;
+ const websocket=new WebSocket("ws://localhost:"+inPort); inActionInfo=JSON.parse(inActionInfo); const context=inActionInfo.context; const settings=inActionInfo.payload.settings??{};
  websocket.onopen=()=>websocket.send(JSON.stringify({event:inRegisterEvent,uuid:inPropertyInspectorUUID}));
  const step=document.getElementById("step"),stepValue=document.getElementById("stepValue"),mode=document.getElementById("mode"),mute=document.getElementById("mute"),direction=document.getElementById("direction"),stepRow=document.getElementById("stepRow");
+ const style=document.getElementById("barStyle"),activeColor=document.getElementById("activeColor"),styleRow=document.getElementById("styleRow"),activeColorRow=document.getElementById("activeColorRow");
+ const gaugeColors=[["gauge_low_color", "#ff2020"], ["gauge_lower_mid_color", "#ffd21f"], ["gauge_normal_color", "#20e83f"], ["gauge_boost_color", "#ffd21f"], ["gauge_high_color", "#ff2020"]];
+ for(const [id,fallback] of gaugeColors) document.getElementById(id).value=settings[id]??fallback;
+ style.value=settings.bar_style==="original"?"original":"gauge";activeColor.value=settings.unmute_color??"#3db36b";
  step.value=settings.step??5;stepValue.innerText=step.value+"%";mode.value=settings.mode??"up";mute.value=settings.mute_color??"#ff3b30";
- const isKeypad=inActionInfo.payload.controller!="Encoder";if(!isKeypad)direction.style.display="none";syncStep=()=>stepRow.style.display=(isKeypad&&mode.value=="mute")?"none":"";syncStep();step.addEventListener("input",()=>stepValue.innerText=step.value+"%");
- update=()=>websocket.send(JSON.stringify({event:"setSettings",context,payload:{step:parseInt(step.value,10),mode:mode.value,mute_color:mute.value}}));
+ const isKeypad=inActionInfo.payload.controller!="Encoder";if(!isKeypad)direction.style.display="none";syncStep=()=>stepRow.style.display=(isKeypad&&mode.value=="mute")?"none":"";syncStep();styleRow.style.display=isKeypad?"none":"";syncStyle=()=>{activeColorRow.style.display=(!isKeypad&&style.value==="original")?"":"none";document.getElementById("gaugeColors").style.display=(isKeypad||style.value==="gauge")?"":"none";};syncStyle();step.addEventListener("input",()=>stepValue.innerText=step.value+"%");
+ update=()=>websocket.send(JSON.stringify({event:"setSettings",context,payload:{...settings,...Object.fromEntries(gaugeColors.map(([id])=>[id,document.getElementById(id).value])),bar_style:style.value,unmute_color:activeColor.value,step:parseInt(step.value,10),mode:mode.value,mute_color:mute.value}}));
 }
 </script><link rel="stylesheet" href="sdpi.css"/></head>
 <body><div class="sdpi-wrapper">
@@ -16,5 +20,14 @@ function connectElgatoStreamDeckSocket(inPort,inPropertyInspectorUUID,inRegister
 <div class="action-desc">Controls the audio of the application owning the currently focused KDE/Wayland window. Rotate the encoder for volume; press or touch to mute.</div>
 <div class="sdpi-item" id="direction"><div class="sdpi-item-label">On press</div><select id="mode" class="sdpi-item-value select" onchange="update();syncStep()"><option value="up">Volume up</option><option value="down">Volume down</option><option value="mute">Toggle mute</option></select></div>
 <div class="sdpi-item" id="stepRow"><div class="sdpi-item-label">Step (<span id="stepValue">5%</span>)</div><input id="step" class="sdpi-item-value" type="range" min="1" max="20" value="5" onchange="update()"/></div>
+<div class="sdpi-item" id="styleRow"><div class="sdpi-item-label">Bar style</div><select id="barStyle" class="sdpi-item-value select" onchange="syncStyle();update()"><option value="gauge">Gauge</option><option value="original">Original horizontal bar</option></select></div>
+<div class="sdpi-item" id="activeColorRow"><div class="sdpi-item-label">Bar color</div><input id="activeColor" class="sdpi-item-value" type="color" value="#3db36b" onchange="update()"/></div>
+<div id="gaugeColors">
+<div class="sdpi-item"><div class="sdpi-item-label">0–40%</div><input id="gauge_low_color" class="sdpi-item-value" type="color" value="#ff2020" onchange="update()"/></div>
+<div class="sdpi-item"><div class="sdpi-item-label">40–79%</div><input id="gauge_lower_mid_color" class="sdpi-item-value" type="color" value="#ffd21f" onchange="update()"/></div>
+<div class="sdpi-item"><div class="sdpi-item-label">79–115%</div><input id="gauge_normal_color" class="sdpi-item-value" type="color" value="#20e83f" onchange="update()"/></div>
+<div class="sdpi-item"><div class="sdpi-item-label">115–135%</div><input id="gauge_boost_color" class="sdpi-item-value" type="color" value="#ffd21f" onchange="update()"/></div>
+<div class="sdpi-item"><div class="sdpi-item-label">135–150%</div><input id="gauge_high_color" class="sdpi-item-value" type="color" value="#ff2020" onchange="update()"/></div>
+</div>
 <div class="sdpi-item"><div class="sdpi-item-label">Muted color</div><input id="mute" class="sdpi-item-value" type="color" value="#ff3b30" onchange="update()"/></div>
 </div></body></html>

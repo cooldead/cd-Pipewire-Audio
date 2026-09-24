@@ -7,29 +7,39 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
-#[derive(Debug, Clone)]
-pub struct FocusedApp {
-	/// Focused PID plus all descendants.
-	related_pids: HashSet<u32>,
+/// Exact focused PID first, followed by sorted descendants. Read a fresh table
+/// each time so newly spawned audio processes are immediately discoverable.
+pub fn focused_pids(pid: u32) -> Vec<u32> {
+	if pid == 0 {
+		return Vec::new();
+	}
+	candidates(pid, &process_table())
 }
 
-impl FocusedApp {
-	pub fn from_pid(pid: u32) -> Option<Self> {
-		if pid == 0 {
-			return None;
+fn candidates(pid: u32, processes: &HashMap<u32, u32>) -> Vec<u32> {
+	// Index children once instead of scanning the full table for every parent.
+	let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+	for (&child, &parent) in processes {
+		children.entry(parent).or_default().push(child);
+	}
+	let mut seen = HashSet::from([pid]);
+	let mut pending = vec![pid];
+	let mut descendants = Vec::new();
+	while let Some(parent) = pending.pop() {
+		if let Some(children) = children.get(&parent) {
+			for &child in children {
+				if seen.insert(child) {
+					descendants.push(child);
+					pending.push(child);
+				}
+			}
 		}
-
-		let processes = process_table();
-		let mut related_pids = HashSet::new();
-
-		related_pids.insert(pid);
-		add_descendants(pid, &processes, &mut related_pids);
-
-		Some(Self { related_pids })
 	}
-	pub fn related_pids(&self) -> impl Iterator<Item = u32> + '_ {
-		self.related_pids.iter().copied()
-	}
+	descendants.sort_unstable();
+	let mut result = Vec::with_capacity(descendants.len() + 1);
+	result.push(pid);
+	result.extend(descendants);
+	result
 }
 
 fn process_table() -> HashMap<u32, u32> {
@@ -65,15 +75,25 @@ fn parent_pid(pid: u32) -> Option<u32> {
 		.and_then(|value| value.trim().parse::<u32>().ok())
 }
 
-fn add_descendants(parent: u32, processes: &HashMap<u32, u32>, output: &mut HashSet<u32>) {
-	let children: Vec<u32> = processes
-		.iter()
-		.filter_map(|(&pid, &ppid)| (ppid == parent).then_some(pid))
-		.collect();
+#[cfg(test)]
+mod tests {
+	use super::*;
 
-	for child in children {
-		if output.insert(child) {
-			add_descendants(child, processes, output);
-		}
+	#[test]
+	fn exact_pid_precedes_sorted_descendants_and_excludes_unrelated_processes() {
+		let table = HashMap::from([(90, 10), (5, 90), (30, 10), (70, 1)]);
+		assert_eq!(candidates(10, &table), vec![10, 5, 30, 90]);
+		assert_eq!(candidates(999, &table), vec![999]);
+		assert!(focused_pids(0).is_empty());
+	}
+
+	#[test]
+	fn cycles_and_deep_trees_do_not_recurse_or_duplicate_candidates() {
+		assert_eq!(
+			candidates(10, &HashMap::from([(10, 20), (20, 10)])),
+			vec![10, 20]
+		);
+		let table = (2..=10_000).map(|pid| (pid, pid - 1)).collect();
+		assert_eq!(candidates(1, &table), (1..=10_000).collect::<Vec<_>>());
 	}
 }

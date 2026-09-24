@@ -1,9 +1,4 @@
-//! On-the-fly visual feedback.
-//!
-//! Keypad buttons get a full 128×128 SVG key image via `set_image`. Encoders
-//! (Stream Deck+ dials) use the native `$B1` touchstrip layout, for which this
-//! module builds the `setFeedback` value+bar payload (see [`bar_feedback`]); the
-//! icon and title stay the dial's own OpenDeck configuration.
+//! Gauge rendering and original upstream horizontal touchstrip feedback.
 
 use crate::color::BarColors;
 use base64::Engine;
@@ -14,12 +9,7 @@ fn data_uri(svg: &str) -> String {
 	format!("data:image/svg+xml;base64,{b64}")
 }
 
-/// A bold slash drawn corner-to-corner across the whole key to signal mute, in
-/// the configured mute colour. Overlaid last (on top of the label/bar) by the
-/// keypad renderers when muted; empty when unmuted.
-
-/// A labelled level-bar key/encoder: a custom label with a level bar (no
-/// percentage), shared by the device / input / app volume actions.
+/// The existing semicircular gauge, shared by keys and gauge-style encoders.
 pub fn label_bar_key(
 	label: &str,
 	known: bool,
@@ -62,23 +52,23 @@ pub fn label_bar_key(
 		)
 	};
 
-	// Red → yellow → green → yellow → red.
+	// User-configurable sections, defaulting to red/yellow/green/yellow/red.
 	let arc = if known && !muted {
 		[
-			arc_segment(0.0, 40.0, "#ff2020"),
-			arc_segment(40.0, 79.0, "#ffd21f"),
-			arc_segment(79.0, 110.0, "#20e83f"),
-			arc_segment(110.0, 130.0, "#ffd21f"),
-			arc_segment(130.0, 150.0, "#ff2020"),
+			arc_segment(0.0, 40.0, colors.gauge_low_color()),
+			arc_segment(40.0, 79.0, colors.gauge_lower_mid_color()),
+			arc_segment(79.0, 115.0, colors.gauge_normal_color()),
+			arc_segment(115.0, 135.0, colors.gauge_boost_color()),
+			arc_segment(135.0, 150.0, colors.gauge_high_color()),
 		]
 		.join("")
 	} else {
 		arc_segment(0.0, 150.0, "#555555")
 	};
 
-	// Transition marks only:
-	// 40, 80, 100, 130.
-	let marks = [40.0, 79.0, 100.0, 110.0, 130.0];
+	// Color transitions plus the 100% reference mark. Boost marks follow
+	// their actual values, rather than mirroring the lower-volume side.
+	let marks = [40.0, 79.0, 100.0, 115.0, 135.0];
 
 	let mut mark_svg = String::new();
 
@@ -102,8 +92,8 @@ pub fn label_bar_key(
 	// Current volume indicator.
 	let indicator_angle = value_angle(pct).to_radians();
 
-	let indicator_inner = 47.0;
-	let indicator_outer = 63.0;
+	let indicator_inner = 44.0;
+	let indicator_outer = 66.0;
 
 	let x1 = cx + indicator_inner * indicator_angle.cos();
 	let y1 = cy - indicator_inner * indicator_angle.sin();
@@ -112,7 +102,9 @@ pub fn label_bar_key(
 
 	let indicator = format!(
 		r##"<line x1="{x1:.2}" y1="{y1:.2}" x2="{x2:.2}" y2="{y2:.2}"
-		stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>"##
+		stroke="#0b0b0b" stroke-width="8" stroke-linecap="round"/>
+		<line x1="{x1:.2}" y1="{y1:.2}" x2="{x2:.2}" y2="{y2:.2}"
+		stroke="#ff2020" stroke-width="4.5" stroke-linecap="round"/>"##
 	);
 	let mute_label = if muted {
 		format!(
@@ -159,3 +151,66 @@ fn escape(s: &str) -> String {
 }
 
 // --- Encoder touchstrip feedback (Stream Deck+) ------------------------------
+
+/// Matches sjourdois/opendeck-pipewire's native volume layout and feedback.
+/// The bar fills at 100%; the number continues to show boosted volume to 150%.
+pub fn original_bar_feedback(
+	title: &str,
+	known: bool,
+	volume: f32,
+	muted: bool,
+	colors: &BarColors,
+) -> serde_json::Value {
+	let pct = (volume * 100.0).round().clamp(0.0, 150.0);
+	let (text, text_color, bar_color, value) = if !known {
+		("n/a".to_owned(), "#eab308", "#eab308", 100.0)
+	} else if muted {
+		(
+			"muted".to_owned(),
+			colors.mute(),
+			colors.mute(),
+			pct.min(100.0),
+		)
+	} else {
+		(
+			format!("{pct:.0}%"),
+			"#ffffff",
+			colors.active(),
+			pct.min(100.0),
+		)
+	};
+	serde_json::json!({
+		"title": title,
+		"value": {"value": text, "color": text_color},
+		"indicator": {"value": value, "bar_fill_c": bar_color},
+	})
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn original_bar_shows_level_boost_mute_and_unavailable() {
+		let colors = BarColors {
+			unmute_color: Some("#123456".into()),
+			mute_color: Some("#abcdef".into()),
+			..BarColors::default()
+		};
+		for (volume, text, bar) in [(0.0, "0%", 0.0), (0.72, "72%", 72.0), (1.5, "150%", 100.0)] {
+			let fb = original_bar_feedback("Brave", true, volume, false, &colors);
+			assert_eq!(fb["title"], "Brave");
+			assert_eq!(fb["value"]["value"], text);
+			assert_eq!(fb["indicator"]["value"], bar);
+			assert_eq!(fb["indicator"]["bar_fill_c"], "#123456");
+		}
+		let muted = original_bar_feedback("Brave", true, 0.72, true, &colors);
+		assert_eq!(muted["value"]["value"], "muted");
+		assert_eq!(muted["value"]["color"], "#abcdef");
+		assert_eq!(muted["indicator"]["bar_fill_c"], "#abcdef");
+		let missing = original_bar_feedback("No Focused App", false, 0.0, true, &colors);
+		assert_eq!(missing["value"]["value"], "n/a");
+		assert_eq!(missing["indicator"]["value"], 100.0);
+		assert_eq!(missing["indicator"]["bar_fill_c"], "#eab308");
+	}
+}
